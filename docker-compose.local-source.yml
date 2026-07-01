@@ -1,0 +1,35 @@
+# docker-compose.local-source.yml — Montage du code source en développement local
+# ==================================================================================
+# Overlay OPT-IN (non chargé automatiquement) :
+#   docker compose -f docker-compose.yaml -f docker-compose.build.yml \
+#                   -f docker-compose.local-source.yml up -d --build
+#
+# Ce fichier monte le code source en volume pour éviter de rebuilder l'image
+# à chaque modification — nécessite docker-compose.build.yml (build depuis les
+# sources) et un build React déjà généré (./frontend/build, via `npm run build`).
+# Le mode reste PRODUCTION (pas de --reload uvicorn, pas de Swagger UI non
+# authentifié, pas de docker.sock).
+#
+# Workflow après modification :
+#   - Code Python backend  → docker compose restart backend
+#   - Build React frontend → cd frontend && npm run build
+#                            docker compose restart frontend
+#   - Script add-deb.sh    → déjà monté dans docker-compose.yaml (./scripts)
+#   - settings.json        → déjà monté dans docker-compose.yaml (./repos/settings.json)
+#
+# Le frontend utilise des URLs relatives (/api/v1) proxifiées par nginx → pas d'IP hardcodée,
+# fonctionne sur n'importe quel client sans modifier REACT_APP_API_URL.
+
+services:
+  backend:
+    # Monte le code Python directement — plus besoin de docker cp ni de rebuild
+    # ENV reste "production" : uvicorn sans --reload, Swagger UI désactivé
+    volumes:
+      - ./backend:/app
+
+  frontend:
+    # Monte le build React — après "npm run build", juste "docker compose restart frontend"
+    # Monte aussi la config nginx pour activer le proxy /api/ → backend sans rebuild
+    volumes:
+      - ./frontend/build:/usr/share/nginx/html:ro
+      - ./frontend/nginx.conf:/etc/nginx/conf.d/default.conf:ro

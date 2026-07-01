@@ -1,0 +1,39 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+/* Scrollbar personnalisée */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: #94A3B8; }
+
+/* ── react-grid-layout ── */
+.react-grid-layout { position: relative; }
+.react-grid-item { transition: all 200ms ease; transition-property: left, top, width, height; }
+.react-grid-item.cssTransforms { transition-property: transform, width, height; }
+.react-grid-item.resizing { transition: none; z-index: 3; }
+.react-grid-item.react-draggable-dragging { transition: none; z-index: 100; cursor: grabbing; opacity: 0.92; }
+.react-grid-item.react-grid-placeholder { background: rgba(79,156,249,0.15); border: 1px dashed #4F9CF9; border-radius: 12px; transition-duration: 100ms; z-index: 2; }
+.react-grid-item > .react-resizable-handle { position: absolute; width: 20px; height: 20px; bottom: 0; right: 0; cursor: se-resize; opacity: 0; transition: opacity 0.2s; }
+.react-grid-item:hover > .react-resizable-handle { opacity: 1; }
+.react-resizable-handle::after { content: ""; position: absolute; right: 4px; bottom: 4px; width: 8px; height: 8px; border-right: 2px solid #4F9CF9; border-bottom: 2px solid #4F9CF9; border-radius: 1px; }
+
+/* ── Dashboard dark mode ── */
+.dashboard-dark { background: #111217; }
+.panel-dark { background: #1F2233; border: 1px solid #2D3148; border-radius: 12px; overflow: hidden; }
+.panel-dark-header { padding: 12px 16px 0; }
+.panel-title { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #9BA3C7; }
+.panel-value { font-size: 36px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+.drag-handle { cursor: grab; }
+.drag-handle:active { cursor: grabbing; }

@@ -1,0 +1,25 @@
+# Liste d'exceptions Trivy pour l'image backend (repod-backend).
+#
+# Le scan Trivy (job security-docker) est BLOQUANT sur les CVE CRITICAL/HIGH
+# avec correctif disponible (ignore-unfixed: true).
+#
+# Si une CVE doit être temporairement acceptée (faux positif, correctif amont
+# pas encore disponible, risque jugé acceptable...), l'ajouter ci-dessous avec
+# un commentaire expliquant la justification, qui a validé, et la date de
+# revue prévue.
+#
+# Exemple :
+# CVE-2024-XXXXX  # faux positif jq statique non utilisé — revue 2026-09-01
+
+# jaraco.context et wheel : dépendances transitives vendorées par pip
+# (image python:3.10-slim), pas une dépendance directe du projet
+# (absentes de requirements.txt). Aucun correctif amont publié pour la
+# version de pip de l'image de base à ce jour — revue 2026-09-13.
+CVE-2026-23949  # jaraco.context vendoré par pip, hors requirements.txt — revue 2026-09-13
+CVE-2026-24049  # wheel vendoré par pip, hors requirements.txt — revue 2026-09-13
+
+# github.com/docker/docker et stdlib : dépendances Go embarquées dans le
+# binaire grype (anchore/grype, installé via install.sh dans le builder).
+# Correctif dépend d'une nouvelle release upstream de grype — revue 2026-09-13.
+CVE-2026-34040  # dépendance Go embarquée dans le binaire grype — revue 2026-09-13
+CVE-2026-42504  # stdlib Go embarquée dans le binaire grype — revue 2026-09-13

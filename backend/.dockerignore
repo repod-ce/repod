@@ -1,0 +1,19 @@
+# Clés SSH — ne jamais inclure dans l'image Docker
+ssh/
+*.pem
+*.key
+id_rsa
+id_ed25519
+
+# Environnement de développement
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.env
+*.env
+
+# Fichiers temporaires
+*.tmp
+*.log
+.DS_Store

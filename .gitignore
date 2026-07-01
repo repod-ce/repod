@@ -1,0 +1,137 @@
+# =============================================================================
+# Secrets & configuration locale — ne jamais committer
+# =============================================================================
+.env
+backend.env
+repos/settings.json
+repos/certs/
+
+# =============================================================================
+# Clés cryptographiques & identité
+# =============================================================================
+.gnupg/
+*.gpg
+*.kbx
+gnupg/
+repos/gnupg/
+
+# Clés SSH — répertoire entier
+backend/ssh/
+
+# =============================================================================
+# Données du dépôt (volumes Docker — runtime, pas du code)
+# =============================================================================
+repos/db/
+repos/dists/
+repos/pool/
+repos/conf/
+repos/clamav-db/
+repos/grype-db/
+repos/staging/
+repos/imports/
+repos/auth/
+repos/audit/
+repos/security/
+repos/logs/
+repos/manifests/
+repos/package-index/
+
+# Community edition — données runtime
+community/repos/auth/
+community/repos/package-index/
+community/repos/security/
+community/repos/staging/
+community/repos/imports/
+community/repos/audit/
+community/repos/logs/
+community/repos/manifests/
+community/repos/grype-db/
+community/repos/clamav-db/
+community/repos/settings.json
+community/repos/certs/
+
+# =============================================================================
+# Bases de données & antivirus
+# =============================================================================
+*.db
+*.sqlite
+*.cvd
+*.cld
+
+# =============================================================================
+# Python
+# =============================================================================
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+.venv/
+venv/
+env/
+backend/.pytest_cache/
+backend/.ruff_cache/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# =============================================================================
+# Node / React (frontend)
+# =============================================================================
+node_modules/
+frontend/node_modules/
+frontend/build/
+community/frontend/node_modules/
+community/frontend/build/
+community/backend/__pycache__/
+community/backend/**/__pycache__/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# =============================================================================
+# Sites web / docs générés
+# =============================================================================
+site/
+web/dist/
+web/node_modules/
+web/.astro/
+
+# =============================================================================
+# Éditeurs & IDE
+# =============================================================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# =============================================================================
+# Claude Code (fichiers de session locale — pas du code)
+# =============================================================================
+.claude/
+
+# =============================================================================
+# Docs internes sensibles — ne pas publier dans le repo public CE
+# =============================================================================
+/CLAUDE.md
+/frontend/DESIGN_SYSTEM.md
+/frontend/CHANGELOG_UX.md
+
+# =============================================================================
+# Temporaire & cache
+# =============================================================================
+cache/
+tmp/
+temp/
+*.tmp
+*.bak
+*.orig
+*.log
