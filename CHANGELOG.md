@@ -1,3 +1,16 @@
+## v1.0.0 — 2026-07-01
+
+Initial release:
+
+### ✨ Nouvelles fonctionnalités
+- feat: initial release — Repod Community Edition (1a482a1)
+
+
+### 🐳 Images Docker
+- `ghcr.io/repod-ce/backend:1.0.0`
+- `ghcr.io/repod-ce/frontend:1.0.0`
+- `ghcr.io/repod-ce/apt-repo:1.0.0`
+- `ghcr.io/repod-ce/rpm-nginx:1.0.0`
 ## v1.0.0 — 2026-06-14
 
 Initial public release of Repod Community Edition.
