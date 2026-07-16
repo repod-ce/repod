@@ -1,0 +1,137 @@
+##
+## Repod — Configuration Docker Compose pour mode RPM
+##
+## Usage :
+##   docker compose -f docker-compose.rpm.yml up -d
+##
+## Ce fichier définit une stack complète et autonome en mode REPO_FORMAT=rpm,
+## avec sa propre base PostgreSQL (séparée de celle de docker-compose.yaml) :
+##   - db        : PostgreSQL dédié à cette stack RPM (volume postgres_data_rpm)
+##   - rpm-repo  : nginx servant les .rpm et les métadonnées createrepo_c
+##   - backend   : API FastAPI avec pipeline de validation RPM
+##   - frontend  : Interface React (identique au mode APT)
+##
+## Prérequis :
+##   - backend.env configuré (JWT_SECRET_KEY, WEBHOOK_SECRET, etc.)
+##   - .env configuré (ports, URLs, POSTGRES_PASSWORD)
+##   - createrepo_c installé dans l'image backend (voir backend/Dockerfile)
+##   - rpm installé dans l'image backend
+##
+## Les images sont tirées depuis ghcr.io/getautoflow/repod-ce/* (REPOD_VERSION
+## par défaut = latest). Pour compiler depuis les sources locales à la place :
+##   docker compose -f docker-compose.rpm.yml -f docker-compose.rpm.build.yml up -d --build
+##
+
+networks:
+  rpm_network:
+
+volumes:
+  postgres_data_rpm:
+
+services:
+
+  # ── Base de données PostgreSQL (instance dédiée au mode RPM) ────────────
+  db:
+    image: postgres:16-alpine
+    container_name: repod-db-rpm
+    environment:
+      POSTGRES_DB: repod
+      POSTGRES_USER: repod
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-repod_dev_password}
+    volumes:
+      - postgres_data_rpm:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U repod -d repod"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - rpm_network
+
+  # ── Serveur de dépôt RPM (nginx) ─────────────────────────────────────────
+  rpm-repo:
+    image: ghcr.io/getautoflow/repod-ce/rpm-nginx:${REPOD_VERSION:-latest}
+    container_name: depot-rpm
+    ports:
+      - "${BIND_HOST:-0.0.0.0}:${RPM_REPO_PORT:-8080}:80"
+    volumes:
+      - ./repos/gnupg:/repos/gnupg:rw
+      - ./repos/pool:/usr/share/nginx/html/repos/pool:ro
+      # Dépôts RPM par distribution/arch (createrepo_c écrit ici)
+      - ./repos/rpm:/usr/share/nginx/html/repos/rpm:ro
+      - ./nginx/rpm.conf:/etc/nginx/conf.d/repo.conf:ro
+      - ./repos/logs:/var/log/nginx
+    restart: unless-stopped
+    networks:
+      - rpm_network
+
+  # ── Backend API (mode RPM) ───────────────────────────────────────────────
+  backend:
+    image: ghcr.io/getautoflow/repod-ce/backend:${REPOD_VERSION:-latest}
+    container_name: backend-api-rpm
+    depends_on:
+      - rpm-repo
+      - db
+    env_file: backend.env
+    environment:
+      ENV: production
+      DATABASE_URL: postgresql://repod:${POSTGRES_PASSWORD:-repod_dev_password}@db:5432/repod
+      REPO_FORMAT: rpm                             # ← activer le mode RPM
+      POOL_DIR: /repos/pool
+      REPO_BASE: /repos/rpm                        # répertoires createrepo_c
+      MANIFEST_DIR: /repos/manifests
+      STAGING_INCOMING: /repos/staging/incoming
+      STAGING_QUARANTINE: /repos/staging/quarantine
+      AUDIT_DIR: /repos/audit
+      INDEX_PATH: /repos/manifests/index.json
+      ADD_RPM_SCRIPT: /scripts/add-rpm.sh
+      IMPORTS_DIR: /repos/imports
+      CLAMAV_DB_DIR: /var/lib/clamav
+      SETTINGS_PATH: /repos/settings.json
+      GRYPE_DB_CACHE_DIR: /repos/grype-db
+      SECURITY_DIR: /repos/security
+      SECURITY_CACHE_DIR: /repos/security
+      NGINX_LOGS_DIR: /repos/logs
+      GNUPG_HOME: /repos/gnupg
+      TRUSTED_PROXIES: "127.0.0.1,172.16.0.0/12,192.168.0.0/16"
+    volumes:
+      - ./scripts:/scripts
+      - ./repos/pool:/repos/pool
+      - ./repos/rpm:/repos/rpm                     # dépôts RPM par distrib/arch
+      - ./repos/manifests:/repos/manifests
+      - ./repos/staging:/repos/staging
+      - ./repos/audit:/repos/audit
+      - ./repos/package-index:/repos/package-index
+      - ./repos/imports:/repos/imports
+      - ./repos/clamav-db:/var/lib/clamav
+      - ./repos/grype-db:/repos/grype-db
+      - ./repos/settings.json:/repos/settings.json
+      - ./repos/certs:/repos/certs:ro
+      - ./repos/security:/repos/security
+      - ./repos/logs:/repos/logs
+      - ./repos/gnupg:/repos/gnupg:rw
+      - ./backend/ssh:/home/appuser/.ssh
+    ports:
+      - "${BIND_HOST:-0.0.0.0}:${BACKEND_PORT:-8001}:8000"
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 2.5g
+          cpus: "1.5"
+    networks:
+      - rpm_network
+
+  # ── Frontend React (identique au mode APT) ───────────────────────────────
+  frontend:
+    image: ghcr.io/getautoflow/repod-ce/frontend:${REPOD_VERSION:-latest}
+    container_name: frontend-ui-rpm
+    depends_on:
+      - backend
+    ports:
+      - "${BIND_HOST:-0.0.0.0}:${FRONTEND_PORT:-3004}:80"
+    restart: unless-stopped
+    networks:
+      - rpm_network

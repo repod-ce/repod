@@ -1,0 +1,41 @@
+# docker-compose.dev.yml — Mode développement UNIQUEMENT
+# =========================================================
+# Ne JAMAIS utiliser ce fichier en production.
+#
+# Ce fichier ajoute :
+#  - Volume ./backend:/app → uvicorn --reload (hot-reload Python)
+#  - Variable ENV=development → active Swagger UI + --reload
+#  - Socket Docker montée pour le dev (GPG via docker exec)
+#  - Frontend en mode npm start (HMR React)
+#
+# PRODUCTION (images pré-construites ghcr.io/getautoflow/repod-ce/*) :
+#   docker compose -f docker-compose.yaml up -d
+#
+# DÉVELOPPEMENT (build depuis les sources + hot-reload) :
+#   docker compose -f docker-compose.yaml -f docker-compose.build.yml -f docker-compose.dev.yml up --build
+
+services:
+  backend:
+    environment:
+      ENV: development
+    volumes:
+      - ./backend:/app                          # hot-reload Python
+      - /var/run/docker.sock:/var/run/docker.sock  # docker exec GPG (dev uniquement)
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+      args:
+        REACT_APP_API_URL: ""
+        REACT_APP_REPO_URL: ${REACT_APP_REPO_URL:-http://localhost:80}
+    volumes:
+      - ./frontend/src:/app/src          # hot-reload React (HMR)
+      - ./frontend/public:/app/public
+      - ./frontend/vite.config.js:/app/vite.config.js  # proxy API en dev
+    environment:
+      - REACT_APP_API_URL=
+      - REACT_APP_REPO_URL=${REACT_APP_REPO_URL:-http://localhost:80}
+      - PORT=80                           # npm start écoute sur 80 = même mapping que nginx
+      - CHOKIDAR_USEPOLLING=true          # nécessaire dans VMs/WSL
+      - WDS_SOCKET_PORT=0                 # 0 = utilise le port de la page (3003 côté browser)

@@ -1,0 +1,22 @@
+##
+## Repod — Overlay "build from source" pour la stack RPM autonome
+##
+##   docker compose -f docker-compose.rpm.yml -f docker-compose.rpm.build.yml up -d --build
+##
+
+services:
+  rpm-repo:
+    build:
+      context: .
+      dockerfile: Dockerfile.rpm-nginx
+
+  backend:
+    build: ./backend
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        REACT_APP_API_URL: ${REACT_APP_API_URL-}
+        REACT_APP_REPO_URL: ${REACT_APP_REPO_URL-}
+        REACT_APP_RPM_REPO_URL: ${REACT_APP_RPM_REPO_URL-http://localhost:8001}

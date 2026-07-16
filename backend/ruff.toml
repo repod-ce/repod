@@ -1,0 +1,23 @@
+# Configuration ruff pour repod backend
+# Phase initiale : règles critiques (pyflakes F + erreurs syntaxiques E9xx)
+# Les règles de style (E501 longueur, W291 espaces, etc.) seront activées progressivement.
+
+target-version = "py310"
+
+[lint]
+# F  : pyflakes   — imports inutilisés, noms indéfinis, variables inutilisées
+# E9 : pycodestyle — erreurs de syntaxe Python (SyntaxError, IndentationError, …)
+select = ["F", "E9"]
+
+# Exclusions temporaires en phase de migration
+ignore = [
+    "F401",  # unused-import — certains imports sont réexportés intentionnellement
+    "F841",  # local-variable-is-assigned-to-but-never-used — patterns de debug conservés
+]
+
+# Répertoires à exclure du lint
+exclude = [
+    ".venv",
+    "__pycache__",
+    "*.pyc",
+]
