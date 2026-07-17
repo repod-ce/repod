@@ -1,0 +1,111 @@
+# =============================================================================
+# docker-compose.ha.yml — Overlay HA actif-passif (EXEMPLE / RÉFÉRENCE)
+#
+# Ce fichier illustre comment faire tourner plusieurs réplicas de
+# `backend-api` derrière un load-balancer, avec PostgreSQL et /repos
+# partagés en dehors du host Docker. Il N'EST PAS directement utilisable
+# tel quel dans le sandbox mono-VM (PostgreSQL HA et le NFS/EFS partagé
+# doivent exister au préalable) — il sert de point de départ documenté
+# pour un déploiement multi-hôtes.
+#
+# Mécanisme HA actif-passif (voir backend/services/leader_election.py) :
+#   - Au démarrage, chaque réplica tente `pg_try_advisory_lock()` sur
+#     PostgreSQL. Le premier qui réussit devient "leader" : lui seul
+#     démarre l'APScheduler (4 jobs cron : security_sync_daily,
+#     sla_check_daily, retention_daily, mirror_daily) et accepte les
+#     requêtes qui démarrent un job en mémoire (sync, mirror) — les autres
+#     réplicas reçoivent un 503 sur ces endpoints (`Depends(require_leader)`,
+#     `routers/import_router.py` : `POST /import/sync/start`,
+#     `POST /import/sync/start/{target}`, `POST /import/mirror/start/{id}`).
+#   - Le verrou est tenu par une connexion Postgres dédiée et libéré
+#     automatiquement si le process meurt (verrou de session). Le
+#     basculement (failover) se fait donc en redémarrant le conteneur
+#     leader en panne : un autre réplica acquiert le verrou à son
+#     prochain démarrage.
+#   - GET /health → checks.info.ha = {is_leader, instance_id,
+#     scheduler_active} permet d'identifier le leader courant.
+#
+# Utilisation (illustrative) :
+#   docker compose -f docker-compose.yaml -f docker-compose.ha.yml \
+#                  up -d --scale backend=3
+#
+# Prérequis :
+#   1. PostgreSQL HA externe (Patroni/pgpool, RDS Multi-AZ, Cloud SQL HA…)
+#      — DATABASE_URL doit pointer vers le VIP/endpoint HA, pas le
+#      conteneur `db` du compose de base. Le pool SQLAlchemy
+#      (pool_pre_ping=True, pool_recycle=1800) gère déjà la reconnexion
+#      après un failover Postgres.
+#   2. /repos partagé en lecture-écriture (RWX) entre tous les réplicas :
+#      pool/, manifests/, dists/, conf/, db/, staging/, security/, audit/,
+#      settings.json, gnupg/, clamav-db/, grype-db/, backups/ — typiquement
+#      via NFS ou EFS (AWS) / Filestore (GCP) montés sur chaque host Docker.
+#   3. Load-balancer / reverse-proxy en amont (nginx, HAProxy, ALB…) —
+#      voir le bloc de commentaires en bas de ce fichier pour le routage.
+# =============================================================================
+
+services:
+  db:
+    # Le service `db` du compose de base (PostgreSQL local) ne doit PAS
+    # être démarré en HA — utilisez votre cluster Postgres externe et
+    # définissez DATABASE_URL ci-dessous. On le neutralise en supprimant
+    # son rattachement réseau (ou retirez simplement `db` de la commande
+    # `up`).
+    profiles: ["disabled"]
+
+  backend:
+    # `container_name` fixe et le mapping de port host empêchent
+    # `--scale backend=N` (chaque réplica doit avoir un nom/port libres).
+    container_name: !reset null
+    ports: !reset []
+    # Le service `db` local est désactivé (profil "disabled") au profit
+    # d'un Postgres HA externe — supprime la dépendance correspondante
+    # (apt-repo/rpm-repo restent démarrés via `docker compose up`, l'ordre
+    # de démarrage strict n'est pas critique pour ces services).
+    depends_on: !reset null
+    environment:
+      # Pointer vers le endpoint HA Postgres externe (VIP Patroni, RDS
+      # Multi-AZ, etc.) — remplace la valeur "db:5432" du compose de base.
+      DATABASE_URL: ${DATABASE_URL_HA:?DATABASE_URL_HA doit être défini pour le mode HA}
+    volumes:
+      # Remplace les bind mounts ./repos/* par un point de montage NFS/EFS
+      # partagé en RWX entre tous les hosts Docker exécutant un réplica
+      # backend. ${REPOS_NFS_MOUNT} doit être un chemin déjà monté sur le
+      # host (ex: /mnt/repod-nfs), avec la même arborescence que ./repos/
+      # (pool/, manifests/, dists/, conf/, db/, staging/, security/, audit/,
+      # settings.json, gnupg/, clamav-db/, grype-db/, backups/, logs/, rpm/,
+      # apk/, package-index/, imports/, certs/).
+      - ${REPOS_NFS_MOUNT:?REPOS_NFS_MOUNT doit être défini pour le mode HA}:/repos:rw
+      - ./scripts:/scripts
+      - ./backend/ssh:/home/appuser/.ssh
+
+# =============================================================================
+# Routage load-balancer / reverse-proxy (nginx, HAProxy, ALB…)
+#
+#   - La grande majorité des routes /api/v1/* fonctionnent sur N'IMPORTE
+#     QUEL réplica (lecture seule, uploads → /repos partagé + Postgres).
+#     Répartissez-les en round-robin classique.
+#
+#   - EXCEPTION — endpoints à état en mémoire par processus, à router vers
+#     le LEADER UNIQUEMENT (sse_bus, sync_manager, mirror_manager ne sont
+#     PAS distribués entre réplicas — ce sont les seuls job-managers en
+#     mémoire de cette édition Community, il n'y a pas de scan_manager ni
+#     install_manager ici) :
+#       • GET  /api/v1/import/sync/jobs/{id}/stream   (SSE)
+#       • GET  /api/v1/import/mirror/jobs/{id}/stream (SSE)
+#       • /api/v1/logs/stream (SSE — sse_bus.py)
+#     Les endpoints qui DÉMARRENT ces jobs (POST /import/sync/start,
+#     POST /import/sync/start/{target}, POST /import/mirror/start/{id})
+#     renvoient déjà 503 sur les réplicas passifs (Depends(require_leader))
+#     — un client qui retente sur un autre réplica finira par atteindre le
+#     leader.
+#     Identifiez le leader via GET /health → checks.info.ha.is_leader,
+#     et configurez une "sticky session" / route directe vers cette
+#     instance pour le polling de ces jobs.
+#
+#   - Limitation connue : tant que sse_bus/job-managers restent en mémoire
+#     par instance (pas de file d'attente distribuée type Redis), un
+#     basculement de leader en cours de job interrompt le suivi temps réel
+#     de ce job côté UI (le job lui-même continue côté process tant qu'il
+#     tourne, mais son statut n'est plus visible que sur l'instance qui l'a
+#     démarré). Documenté comme axe d'amélioration futur.
+# =============================================================================

@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  backend:
+    build: .
+    container_name: backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./ssh/id_ed25519:/root/.ssh/id_ed25519:ro  # Monte la clé privée en lecture seule
+
+    restart: unless-stopped

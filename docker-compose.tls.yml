@@ -1,0 +1,85 @@
+# =============================================================================
+# docker-compose.tls.yml — Overlay TLS pour Repod
+#
+# Ce fichier s'utilise EN PLUS du docker-compose.yaml de base :
+#
+#   # Avec certificat auto-signé (générer d'abord) :
+#   bash scripts/gen-selfsigned-certs.sh
+#   docker compose -f docker-compose.yaml -f docker-compose.tls.yml up -d
+#
+#   # Avec Let's Encrypt (domaine public requis) :
+#   docker compose -f docker-compose.yaml -f docker-compose.tls.yml \
+#                  -f docker-compose.letsencrypt.yml up -d
+#
+# Architecture :
+#   nginx-proxy (:80, :443, :8443) → frontend-ui (:80) → backend-api (:8000)
+#   Les ports 3003 et 8000 restent accessibles en local (localhost uniquement).
+#
+# Variables d'environnement recommandées (dans .env ou backend.env) :
+#   REPOD_DOMAIN=repod.example.com  (nom de domaine — pour SNI et redirections)
+# =============================================================================
+
+services:
+
+  # ── Reverse proxy TLS ──────────────────────────────────────────────────────
+  nginx-proxy:
+    image: nginx:1.27-alpine
+    container_name: repod-proxy
+    depends_on:
+      - frontend
+      - backend
+    ports:
+      # HTTPS management UI
+      - "${BIND_HOST:-0.0.0.0}:443:443"
+      # HTTPS API direct (CI/CD, Prometheus)
+      - "${BIND_HOST:-0.0.0.0}:8443:8443"
+      # HTTP → HTTPS redirect (port 80 pris par nginx-proxy, apt-repo déplacé sur 8085)
+      # Si vous n'avez pas besoin de redirect HTTP, supprimez cette ligne et
+      # commentez le bloc "server { listen 80 }" dans nginx/tls-proxy.conf.
+      - "${BIND_HOST:-0.0.0.0}:80:80"
+    volumes:
+      - ./nginx/tls-proxy.conf:/etc/nginx/conf.d/tls-proxy.conf:ro
+      # Neutralise le vhost "default_server" de l'image nginx officielle, qui
+      # capterait sinon les requêtes sur :80 avant notre redirection HTTPS.
+      - ./nginx/empty.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./repos/certs/tls:/certs:ro
+      # Webroot Let's Encrypt (utilisé si docker-compose.letsencrypt.yml est actif)
+      - certbot_webroot:/var/www/certbot:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "--server-response", "--spider",
+             "--no-check-certificate", "https://127.0.0.1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - repod_network
+
+  # ── APT repo — déplacé sur le port 8085 (port 80 repris par nginx-proxy) ───
+  # Mettre à jour les sources.list clients (remplacer <host> par l'IP/le nom
+  # de domaine de votre serveur, ex. http://192.0.2.10:8085/...) :
+  #   deb [trusted=yes] http://<host>:8085/repos/dists/jammy jammy main
+  # OU laisser sur port 80 en commentant le bind :80 du nginx-proxy ci-dessus
+  apt-repo:
+    ports: !override
+      - "${BIND_HOST:-0.0.0.0}:${APT_TLS_PORT:-8085}:80"
+
+  # ── Restriction du frontend — localhost uniquement derrière le proxy ────────
+  # Le port 3003 reste accessible en local pour le debug, mais l'accès extérieur
+  # passe par le proxy TLS sur :443.
+  frontend:
+    ports: !override
+      - "127.0.0.1:${FRONTEND_PORT:-3003}:80"
+
+  # ── Restriction du backend — localhost uniquement derrière le proxy ─────────
+  backend:
+    ports: !override
+      - "127.0.0.1:${BACKEND_PORT:-8000}:8000"
+    environment:
+      # Informer FastAPI que le proxy transmet X-Forwarded-Proto: https
+      TRUSTED_PROXIES: "127.0.0.1,172.16.0.0/12,192.168.0.0/16,10.0.0.0/8"
+
+volumes:
+  # Volume partagé nginx-proxy ↔ certbot (challenge ACME)
+  certbot_webroot:
