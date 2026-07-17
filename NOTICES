@@ -1,0 +1,63 @@
+repod — Private APT/RPM/APK Repository Manager with Integrated Security Scanning
+Copyright 2024-present repod contributors
+SPDX-License-Identifier: AGPL-3.0-only
+
+For commercial use without AGPL obligations, see LICENSE-COMMERCIAL.md
+Contact: legal@repod.io
+
+================================================================================
+THIRD-PARTY COMPONENTS
+================================================================================
+This product includes or integrates the following third-party software.
+Each component is governed by its own license (see LICENSES/ directory).
+
+────────────────────────────────────────────────────────────────────────────────
+GNU GENERAL PUBLIC LICENSE v2 (LICENSES/GPL-2.0.txt)
+────────────────────────────────────────────────────────────────────────────────
+
+reprepro
+  Description : Debian/APT repository manager
+  Copyright   : Bernd Wurst, Bernhard R. Link, and contributors
+  Source      : https://salsa.debian.org/brlink/reprepro
+  Usage       : Invoked as an independent subprocess (exec); not linked.
+  Note        : "Mere aggregation" — no GPL contamination (FSF GPL FAQ).
+
+ClamAV
+  Description : Antivirus engine
+  Copyright   : Cisco Systems, Inc. and ClamAV contributors
+  Source      : https://github.com/Cisco-Talos/clamav
+  Usage       : Invoked via clamd socket or clamscan subprocess; not linked.
+
+createrepo_c
+  Description : RPM repository metadata generator
+  Copyright   : Red Hat, Inc. and contributors
+  Source      : https://github.com/rpm-software-management/createrepo_c
+  Usage       : Invoked as an independent subprocess; not linked.
+
+────────────────────────────────────────────────────────────────────────────────
+MIT License (LICENSES/MIT.txt)
+────────────────────────────────────────────────────────────────────────────────
+
+FastAPI         https://github.com/fastapi/fastapi
+React           https://github.com/facebook/react
+SQLAlchemy      https://github.com/sqlalchemy/sqlalchemy
+python-jose     https://github.com/mpdavis/python-jose
+python-dotenv   https://github.com/theskumar/python-dotenv
+APScheduler     https://github.com/agronholm/apscheduler
+
+────────────────────────────────────────────────────────────────────────────────
+Apache License 2.0
+────────────────────────────────────────────────────────────────────────────────
+
+cryptography    https://github.com/pyca/cryptography
+Grype           https://github.com/anchore/grype  (Anchore, Inc.)
+bcrypt          https://github.com/pyca/bcrypt
+
+────────────────────────────────────────────────────────────────────────────────
+LGPL v2.1+
+────────────────────────────────────────────────────────────────────────────────
+
+paramiko        https://github.com/paramiko/paramiko
+psycopg2        https://github.com/psycopg/psycopg2
+  Usage         : Dynamically linked Python module — LGPL allows proprietary use.
+

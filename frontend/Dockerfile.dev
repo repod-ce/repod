@@ -1,0 +1,18 @@
+# Dockerfile.dev — Serveur de développement React (npm start + HMR via Vite)
+FROM node:18
+
+WORKDIR /app
+
+ARG REACT_APP_API_URL=http://localhost:8000
+ENV REACT_APP_API_URL=$REACT_APP_API_URL
+
+ARG REACT_APP_REPO_URL=http://localhost:80
+ENV REACT_APP_REPO_URL=$REACT_APP_REPO_URL
+
+COPY package.json package-lock.json ./
+RUN npm install
+
+COPY . .
+
+EXPOSE 80
+CMD ["npm", "start"]

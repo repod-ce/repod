@@ -1,0 +1,86 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# GitHub Actions — Upload d'un paquet .deb vers repod
+# ─────────────────────────────────────────────────────────────────────────────
+# Pré-requis GitHub :
+#   REPOD_URL      → URL de votre instance repod  (ex. https://repo.example.com)
+#   REPOD_USERNAME → Nom d'utilisateur (compte CI dédié, rôle "uploader")
+#   REPOD_PASSWORD → Mot de passe du compte CI
+#
+# Adaptez la section "Build .deb" à votre système de build (make, dpkg, nfpm…).
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: Publish to repod
+
+on:
+  push:
+    tags:
+      - 'v*'        # Déclenché à chaque tag de version (v1.2.3)
+  workflow_dispatch:
+    inputs:
+      distribution:
+        description: 'Distribution cible (jammy, noble, focal, bookworm…)'
+        required: true
+        default: 'jammy'
+
+env:
+  REPOD_URL: ${{ secrets.REPOD_URL }}
+  DISTRIBUTION: ${{ inputs.distribution || 'jammy' }}
+
+jobs:
+  # ── Étape 1 : Obtenir un token JWT repod ───────────────────────────────────
+  authenticate:
+    name: Login repod
+    runs-on: ubuntu-latest
+    outputs:
+      token: ${{ steps.login.outputs.token }}
+    steps:
+      - name: POST /api/v1/auth/token
+        id: login
+        run: |
+          RESPONSE=$(curl -sf -X POST \
+            --data-urlencode "username=${{ secrets.REPOD_USERNAME }}" \
+            --data-urlencode "password=${{ secrets.REPOD_PASSWORD }}" \
+            "$REPOD_URL/api/v1/auth/token")
+          TOKEN=$(echo "$RESPONSE" | jq -r '.access_token')
+          if [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ]; then
+            echo "::error::Échec d'authentification repod"
+            exit 1
+          fi
+          echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
+
+  # ── Étape 2 : Build et upload ──────────────────────────────────────────────
+  upload:
+    name: Build & Upload
+    runs-on: ubuntu-latest
+    needs: authenticate
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build .deb package
+        run: |
+          # ← Remplacez par votre commande de build
+          # Exemples :
+          #   make deb
+          #   dpkg-buildpackage -b -us -uc
+          #   nfpm package --packager deb --target dist/
+          #   fpm -s dir -t deb ...
+          echo "Adapter cette étape à votre système de build"
+          mkdir -p dist  # placeholder
+
+      - name: Upload to repod
+        run: |
+          TOKEN="${{ needs.authenticate.outputs.token }}"
+          for DEB in dist/*.deb; do
+            [ -f "$DEB" ] || continue
+            echo "📦 Upload de $DEB vers distribution $DISTRIBUTION..."
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+              -H "Authorization: Bearer $TOKEN" \
+              -F "file=@$DEB" \
+              -F "distribution=$DISTRIBUTION" \
+              "$REPOD_URL/api/v1/upload")
+            if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "201" ]; then
+              echo "::error::Upload échoué pour $DEB (HTTP $HTTP_CODE)"
+              exit 1
+            fi
+            echo "✅ $DEB publié (HTTP $HTTP_CODE)"
+          done

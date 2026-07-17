@@ -1,0 +1,150 @@
+## Repod — Configuration Docker Compose par défaut (mode REPO_FORMAT=all)
+##
+## Les images sont tirées depuis ghcr.io/repod-ce/* (REPOD_VERSION
+## par défaut = latest, voir .env.example). Pour compiler depuis les sources
+## locales à la place :
+##   docker compose -f docker-compose.yaml -f docker-compose.build.yml up -d --build
+
+networks:
+  repod_network:
+
+volumes:
+  postgres_data:
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: repod-db
+    environment:
+      POSTGRES_DB: repod
+      POSTGRES_USER: repod
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-repod_dev_password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U repod -d repod"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - repod_network
+
+
+  rpm-repo:
+    image: ghcr.io/repod-ce/rpm-nginx:${REPOD_VERSION:-latest}
+    container_name: depot-rpm
+    ports:
+      - "${BIND_HOST:-0.0.0.0}:${RPM_REPO_PORT:-8080}:80"
+    volumes:
+      - ./repos/gnupg:/repos/gnupg:rw
+      - ./repos/rpm:/usr/share/nginx/html/repos:ro    # distrib/{arch}/ servis par nginx
+      - ./nginx/rpm.conf:/etc/nginx/conf.d/repo.conf:ro
+      - ./repos/logs:/var/log/nginx
+    restart: unless-stopped
+    networks:
+      - repod_network
+
+  apt-repo:
+    image: ghcr.io/repod-ce/apt-repo:${REPOD_VERSION:-latest}
+    container_name: depot-apt
+    ports:
+      - "${BIND_HOST:-0.0.0.0}:${APT_PORT:-80}:80"
+    volumes:
+      - ./repos/conf:/usr/share/nginx/html/repos/conf
+      - ./repos/dists:/usr/share/nginx/html/repos/dists
+      - ./repos/pool:/usr/share/nginx/html/repos/pool
+      - ./repos/db:/usr/share/nginx/html/repos/db
+      - ./repos/apk:/usr/share/nginx/html/apk:ro  # dépôts APK Alpine servis sous /apk/
+      - ./nginx/repo.conf:/etc/nginx/conf.d/repo.conf:ro
+      - ./scripts/add-deb.sh:/scripts/add-deb.sh
+      - ./repos/logs:/var/log/nginx                # logs nginx partagés avec le backend
+    restart: unless-stopped
+    networks:
+      - repod_network
+
+  backend:
+    image: ghcr.io/repod-ce/backend:${REPOD_VERSION:-latest}
+    container_name: backend-api
+    depends_on:
+      - apt-repo
+      - rpm-repo
+      - db
+    env_file:
+      - path: backend.env     # optionnel — overrides manuels (créer depuis backend.env.example)
+        required: false
+      - path: .env            # optionnel — variables globales
+        required: false
+    environment:
+      ENV: production
+      DATABASE_URL: postgresql://repod:${POSTGRES_PASSWORD:-repod_dev_password}@db:5432/repod
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-change-me-in-production}
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+      REPO_FORMAT: all                            # mode APT + RPM + APK Alpine simultané
+      POOL_DIR: /repos/pool
+      MANIFEST_DIR: /repos/manifests
+      STAGING_INCOMING: /repos/staging/incoming
+      STAGING_QUARANTINE: /repos/staging/quarantine
+      AUDIT_DIR: /repos/audit
+      INDEX_PATH: /repos/manifests/index.json
+      ADD_DEB_SCRIPT: /scripts/add-deb.sh
+      ADD_RPM_SCRIPT: /scripts/add-rpm.sh
+      IMPORTS_DIR: /repos/imports
+      CLAMAV_DB_DIR: /var/lib/clamav
+      SETTINGS_PATH: /repos/settings/settings.json
+      GRYPE_DB_CACHE_DIR: /repos/grype-db
+      SECURITY_DIR: /repos/security
+      NGINX_LOGS_DIR: /repos/logs
+      GNUPG_HOME: /repos/gnupg                    # trousseau GPG partagé (sans docker socket)
+      TRUSTED_PROXIES: "127.0.0.1,172.16.0.0/12,192.168.0.0/16"
+      REPREPRO_BASE: /repos                       # reprepro -b /repos (conf/, dists/, db/, pool/)
+      DISTS_DIR: /repos/dists
+      CONF_DIR: /repos/conf
+      REPO_BASE: /repos/rpm                       # répertoires createrepo_c (almalinux8/, rocky9/…)
+      APK_REPO_BASE: /repos/apk                  # dépôts APK Alpine (APKINDEX.tar.gz)
+    volumes:
+      # NOTE : ./backend:/app N'EST PAS monté en production (hot-reload désactivé)
+      # Pour le dev : utiliser docker-compose.dev.yml
+      - ./scripts:/scripts
+      - ./repos/pool:/repos/pool
+      - ./repos/manifests:/repos/manifests
+      - ./repos/staging:/repos/staging
+      - ./repos/audit:/repos/audit
+      - ./repos/package-index:/repos/package-index
+      - ./repos/imports:/repos/imports
+      - ./repos/clamav-db:/var/lib/clamav
+      - ./repos/grype-db:/repos/grype-db
+      - ./repos/settings:/repos/settings             # répertoire persistant settings (settings.json à l'intérieur)
+      - ./repos/certs:/repos/certs:rw               # certificat TLS auto-signé + CA LDAP
+      - ./repos/security:/repos/security
+      - ./repos/logs:/repos/logs                  # logs nginx (téléchargements)
+      - ./repos/gnupg:/repos/gnupg:rw             # trousseau GPG partagé (remplace docker socket)
+      - ./repos/dists:/repos/dists:rw            # reprepro export écrit ici
+      - ./repos/conf:/repos/conf:rw              # reprepro lit la conf ici
+      - ./repos/db:/repos/db:rw                  # base de données reprepro
+      - ./repos/rpm:/repos/rpm:rw                # dépôts RPM par distrib/arch (createrepo_c)
+      - ./repos/apk:/repos/apk:rw               # dépôts APK Alpine (APKINDEX.tar.gz + *.apk)
+      - ./backend/ssh:/home/appuser/.ssh
+      # SÉCURITÉ : /var/run/docker.sock NON monté en production
+    ports:
+      - "${BIND_HOST:-0.0.0.0}:${BACKEND_PORT:-8000}:8000"
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 2.5g   # clamd charge ~800 Mo de signatures + ~200 Mo Python
+          cpus: "1.5"
+    networks:
+      - repod_network
+
+  frontend:
+    image: ghcr.io/repod-ce/frontend:${REPOD_VERSION:-latest}
+    container_name: frontend-ui
+    depends_on:
+      - backend
+    ports:
+      - "${BIND_HOST:-0.0.0.0}:${FRONTEND_PORT:-3003}:80"
+    restart: unless-stopped
+    networks:
+      - repod_network
