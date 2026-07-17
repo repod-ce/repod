@@ -32,6 +32,9 @@ from services.format_router import (
 from services.format_router import (
     is_apt as _is_apt,
 )
+from services.format_router import (
+    find_pool_file as _find_pool_file,
+)
 from services.manifest import list_manifests, load_manifest, save_manifest
 from services.notifications import notify_decision
 from services.path_safety import PathTraversalError, safe_path_join, safe_path_join_http
@@ -50,6 +53,18 @@ from services.security_decisions import (
 )
 
 router = APIRouter(prefix="/security", tags=["Security"])
+
+
+def _pool_filename_fallback(name: str) -> str:
+    """
+    Nom de fichier de secours quand manifest["filename"] est absent — cherche
+    le fichier réel dans le pool plutôt que de deviner une extension via
+    next(iter(_ACCEPTED_EXTS)) (arbitraire en REPO_FORMAT=all/both). Renvoie
+    "" si introuvable — safe_path_join_http() rejette alors proprement au
+    lieu d'un unlink()/subprocess silencieux sur un chemin inventé.
+    """
+    found = _find_pool_file(POOL_DIR, name)
+    return found.name if found else ""
 
 
 class DecisionRequest(BaseModel):
@@ -335,14 +350,20 @@ def decide_package(
     manifest["decision"]      = decision
     save_manifest(manifest)
 
-    # Actions système selon la décision
-    _pkg_ext = next(iter(_ACCEPTED_EXTS))  # ".deb" ou ".rpm"
-    _sep     = "_" if _is_apt() else "-"    # séparateur nom_version (APT) vs nom-version (RPM)
+    # Actions système selon la décision. Le nom de fichier stocké dans le
+    # manifest est la source fiable ; en son absence, on recherche le
+    # fichier réel (find_pool_file essaie chaque extension acceptée) plutôt
+    # que de reconstruire un nom en devinant une extension via
+    # next(iter(_ACCEPTED_EXTS)) — en REPO_FORMAT=all/both, cet appel
+    # renvoie un élément arbitraire du frozenset, pas forcément celui du
+    # paquet réellement traité (voir routers/artifacts.py:delete_artifact()
+    # pour un cas confirmé de ce bug faisant échouer silencieusement une
+    # opération sur le pool).
 
     if body.action in ("accept_risk", "exception"):
         # Promouvoir dans le dépôt physique
         distrib  = manifest.get("distribution", _DEFAULT_DISTRIBUTION)
-        filename = manifest.get("filename", f"{name}{_sep}{version}{_sep}{body.arch}{_pkg_ext}")
+        filename = manifest.get("filename") or _pool_filename_fallback(name)
         pool_pkg = safe_path_join_http(POOL_DIR, filename)
         if pool_pkg.exists():
             if _is_apt():
@@ -358,7 +379,7 @@ def decide_package(
     elif body.action == "reject":
         # Déplacer vers quarantaine
         STAGING_QUARANTINE.mkdir(parents=True, exist_ok=True)
-        filename = manifest.get("filename", f"{name}{_sep}{version}{_sep}{body.arch}{_pkg_ext}")
+        filename = manifest.get("filename") or _pool_filename_fallback(name)
         pool_pkg = safe_path_join_http(POOL_DIR, filename)
         if pool_pkg.exists():
             shutil.move(str(pool_pkg), str(STAGING_QUARANTINE / pool_pkg.name))
@@ -575,32 +596,26 @@ def quarantine_package(
     """
     STAGING_QUARANTINE.mkdir(parents=True, exist_ok=True)
 
-    _pkg_ext  = next(iter(_ACCEPTED_EXTS))  # ".deb" ou ".rpm"
-    _sep      = "_" if _is_apt() else "-"   # séparateur APT vs RPM
-
-    # Trouver le fichier paquet dans le pool
-    version_safe = version.replace(":", "_").replace("/", "_")
-    pkg_path = None
-    for pat in [
-        f"{name}{_sep}{version}{_sep}{arch}{_pkg_ext}",
-        f"{name}{_sep}{version_safe}{_sep}{arch}{_pkg_ext}",
-    ]:
+    # Trouver le fichier paquet dans le pool — le manifest est la source
+    # fiable pour le nom de fichier exact ; en son absence, find_pool_file()
+    # cherche à travers toutes les extensions acceptées plutôt que d'en
+    # deviner une seule via next(iter(_ACCEPTED_EXTS)) (arbitraire en
+    # REPO_FORMAT=all/both — voir routers/artifacts.py:delete_artifact()
+    # pour un cas confirmé où ce pattern laissait un fichier orphelin dans
+    # le pool tout en rapportant un succès).
+    _manifest_for_path = load_manifest(name, version, arch)
+    _manifest_filename = _manifest_for_path.get("filename") if _manifest_for_path else None
+    if _manifest_filename:
         try:
-            p = safe_path_join(POOL_DIR, pat)
+            pkg_path = safe_path_join(POOL_DIR, _manifest_filename)
+            if not pkg_path.exists():
+                pkg_path = None
         except PathTraversalError:
-            continue
-        if p.exists():
-            pkg_path = p
-            break
+            pkg_path = None
+    else:
+        pkg_path = None
     if pkg_path is None:
-        # Recherche large
-        candidates = list(POOL_DIR.glob(f"{name}{_sep}*{_pkg_ext}"))
-        pkg_path = next(
-            (c for c in candidates
-             if f"{_sep}{version}{_sep}" in c.name
-             or f"{_sep}{version_safe}{_sep}" in c.name),
-            None
-        )
+        pkg_path = _find_pool_file(POOL_DIR, name)
 
     # Retirer du dépôt physique (reprepro APT ou createrepo_c RPM)
     _repo_remove_package(name)

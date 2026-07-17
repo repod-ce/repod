@@ -88,3 +88,28 @@ DEFAULT_DISTRIBUTION: str = (
     else "alpine3.20" if is_apk()
     else "almalinux8"
 )
+
+_SEP_BY_EXT = {".deb": "_", ".rpm": "-", ".apk": "-"}
+
+
+def find_pool_file(pool_dir, name: str, recursive: bool = False):
+    """
+    Localise le fichier réel d'un paquet dans le pool en essayant chaque
+    extension acceptée (ACCEPTED_EXTENSIONS), plutôt que d'en deviner une
+    seule via next(iter(ACCEPTED_EXTENSIONS)) — en REPO_FORMAT=all/both,
+    ACCEPTED_EXTENSIONS a plusieurs éléments et next(iter(...)) renvoie un
+    élément arbitraire (ordre de hachage du frozenset) sans rapport avec le
+    format réel du paquet, ce qui peut faire échouer silencieusement une
+    recherche/suppression de fichier pourtant présent sous une autre
+    extension. Retourne le premier `Path` trouvé, ou None.
+
+    Ne remplace PAS un nom de fichier déjà connu (ex. manifest["filename"])
+    — à utiliser uniquement quand ce nom exact n'est pas disponible.
+    """
+    globber = pool_dir.rglob if recursive else pool_dir.glob
+    for ext in ACCEPTED_EXTENSIONS:
+        sep = _SEP_BY_EXT.get(ext, "_")
+        matches = list(globber(f"{name}{sep}*{ext}"))
+        if matches:
+            return matches[0]
+    return None

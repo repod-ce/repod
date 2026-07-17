@@ -40,6 +40,7 @@ from services.audit_export import (
 from services.distributions import remove_package as _repo_remove_package
 from services.format_router import ACCEPTED_EXTENSIONS as _ACCEPTED_EXTS
 from services.format_router import is_apt as _is_apt
+from services.format_router import find_pool_file as _find_pool_file
 from services.indexer import (
     get_index,
     get_package_info,
@@ -159,9 +160,11 @@ def resolve_dependencies(name: str, current_user: str = Depends(get_current_user
 
     # Résolution récursive en temps réel depuis le paquet dans le pool
     # (couvre les dépendances transitives, pas seulement les directes du manifest)
-    _pkg_ext = next(iter(_ACCEPTED_EXTS))  # ".deb" ou ".rpm" selon le mode
-    pkg_filename = manifest.get("filename") or f"{name}_{latest}_{arch}{_pkg_ext}"
-    pkg_candidates = list(POOL_DIR.rglob(pkg_filename))
+    pkg_filename = manifest.get("filename")
+    pkg_candidates = list(POOL_DIR.rglob(pkg_filename)) if pkg_filename else []
+    if not pkg_candidates:
+        _found = _find_pool_file(POOL_DIR, name, recursive=True)
+        pkg_candidates = [_found] if _found else []
     if not pkg_candidates:
         # Fallback sur le manifest si le fichier n'est plus dans le pool.
         # On strip les qualificateurs d'architecture (perl:any → perl) pour
@@ -174,11 +177,11 @@ def resolve_dependencies(name: str, current_user: str = Depends(get_current_user
             if not clean_name or clean_name in seen:
                 continue
             seen.add(clean_name)
-            # APT: cherche {name}_*.deb  — RPM: cherche {name}-*.rpm
-            if _is_apt():
-                available = bool(list(POOL_DIR.rglob(f"{clean_name}_*{_pkg_ext}")))
-            else:
-                available = bool(list(POOL_DIR.rglob(f"{clean_name}-*{_pkg_ext}")))
+            # Essaie chaque extension acceptée plutôt que d'en deviner une
+            # seule via next(iter(_ACCEPTED_EXTS)) — en REPO_FORMAT=all/both
+            # cela pouvait faire rapporter à tort une dépendance comme
+            # "manquante" alors qu'elle était présente sous un autre format.
+            available = _find_pool_file(POOL_DIR, clean_name, recursive=True) is not None
             deps.append({**dep, "name": clean_name, "available_internally": available})
     elif _is_apt():
         deps = _resolve_deps_recursive(str(pkg_candidates[0]))
@@ -271,11 +274,21 @@ def delete_artifact(name: str, current_user: str = Depends(get_maintainer_user))
     # Retirer du dépôt physique (reprepro en APT, createrepo_c en RPM)
     _repo_remove_package(name)
 
-    # Supprimer les fichiers paquet du pool (APT: name_*.deb, RPM: name-*.rpm)
-    _pkg_ext = next(iter(_ACCEPTED_EXTS))
-    _sep = "_" if _is_apt() else "-"
-    for pkg_file in POOL_DIR.glob(f"{name}{_sep}*{_pkg_ext}"):
-        pkg_file.unlink(missing_ok=True)
+    # Supprimer les fichiers paquet du pool — un par version, via le nom de
+    # fichier exact stocké dans l'index (comme delete_artifact_version()).
+    # NE PAS reconstruire nom_*.ext en devinant l'extension via
+    # next(iter(_ACCEPTED_EXTS)) : en REPO_FORMAT=all, _ACCEPTED_EXTS est un
+    # frozenset à 3 éléments ({.deb, .rpm, .apk}) et next(iter(...)) renvoie
+    # un élément arbitraire (ordre de hachage du frozenset), pas forcément
+    # celui du paquet réellement traité — un paquet .deb pouvait ainsi être
+    # "supprimé" (ligne PostgreSQL + index retirés, 200 OK) sans que son
+    # fichier .deb ne quitte jamais /repos/pool, le rendant indétectable en
+    # dehors du pool tout en bloquant silencieusement toute réimportation
+    # ultérieure (SHA256 identique → "déjà importé").
+    for _version_info in info.get("versions", {}).values():
+        _filename = _version_info.get("filename")
+        if _filename:
+            safe_path_join_http(POOL_DIR, _filename).unlink(missing_ok=True)
 
     # Supprimer les manifests — PostgreSQL (source de vérité lue par
     # list_manifests()/packages-posture) ET les fichiers JSON legacy.
@@ -304,18 +317,19 @@ def delete_artifact_version(
         raise HTTPException(status_code=404, detail=f"{name} {version} introuvable")
 
     arch = info["versions"][version].get("arch", "amd64")
-    _pkg_ext = next(iter(_ACCEPTED_EXTS))
-    _default_sep = "_" if _is_apt() else "-"
-    filename = info["versions"][version].get(
-        "filename", f"{name}{_default_sep}{version}{_default_sep}{arch}{_pkg_ext}"
-    )
+    filename = info["versions"][version].get("filename")
 
     # Retirer du dépôt physique (reprepro en APT, createrepo_c en RPM)
     _repo_remove_package(name)
 
-    # Supprimer le fichier paquet du pool
-    pkg_path = safe_path_join_http(POOL_DIR, filename)
-    pkg_path.unlink(missing_ok=True)
+    # Supprimer le fichier paquet du pool. Le nom stocké dans l'index est la
+    # source fiable ; en son absence (ancienne donnée), on recherche le
+    # fichier réel plutôt que de reconstruire un nom en devinant une
+    # extension via next(iter(_ACCEPTED_EXTS)) — voir delete_artifact()
+    # ci-dessus pour l'explication complète de ce bug.
+    pkg_path = safe_path_join_http(POOL_DIR, filename) if filename else _find_pool_file(POOL_DIR, name)
+    if pkg_path:
+        pkg_path.unlink(missing_ok=True)
 
     # Supprimer le manifest — PostgreSQL (source de vérité) ET le fichier
     # JSON legacy. Même bug que delete_artifact() ci-dessus : un unlink()
@@ -409,10 +423,9 @@ def download_version(
 
     pkg_path = safe_path_join_http(POOL_DIR, filename)
     if not pkg_path.exists():
-        _pkg_ext = next(iter(_ACCEPTED_EXTS))
         raise HTTPException(
             status_code=404,
-            detail=f"Fichier {_pkg_ext} absent du pool — version peut-être purgée par la rétention"
+            detail=f"Fichier {filename} absent du pool — version peut-être purgée par la rétention"
         )
 
     audit_log("DOWNLOAD", current_user, "SUCCESS", package=name, version=version,

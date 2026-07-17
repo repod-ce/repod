@@ -26,6 +26,7 @@ from services.path_safety import safe_path_join_http
 from services.format_router import (
     is_apt as _is_apt, ACCEPTED_EXTENSIONS as _ACCEPTED_EXTS,
     DEFAULT_DISTRIBUTION as _DEFAULT_DISTRIBUTION,
+    find_pool_file as _find_pool_file,
 )
 from routers.security_common import POOL_DIR
 
@@ -48,18 +49,18 @@ def rescan_package(
         raise HTTPException(status_code=404, detail=f"{name} {version} introuvable")
 
     filename = manifest.get("filename")
-    _pkg_ext    = next(iter(_ACCEPTED_EXTS))   # ".deb" ou ".rpm"
-    _name_sep   = "_" if _is_apt() else "-"    # séparateur APT vs RPM
     pkg_path = safe_path_join_http(POOL_DIR, filename) if filename else None
 
     if not pkg_path or not pkg_path.exists():
-        # Chercher dans le pool
-        candidates = list(POOL_DIR.glob(f"{name}{_name_sep}*{_pkg_ext}"))
-        pkg_path = candidates[0] if candidates else None
+        # Chercher dans le pool — essaie chaque extension acceptée plutôt
+        # que d'en deviner une seule via next(iter(_ACCEPTED_EXTS))
+        # (arbitraire en REPO_FORMAT=all/both, voir
+        # routers/artifacts.py:delete_artifact()).
+        pkg_path = _find_pool_file(POOL_DIR, name)
 
     if not pkg_path or not pkg_path.exists():
         raise HTTPException(status_code=404,
-                            detail=f"Fichier {_pkg_ext} introuvable dans le pool")
+                            detail=f"Fichier {name} introuvable dans le pool")
 
     import json as _json
     import subprocess as _sp
