@@ -304,8 +304,13 @@ def render_email_template(template_name: str, context: dict) -> tuple[str, str]:
     elif template_name in DEFAULTS:
         subject_tpl = DEFAULTS[template_name].get("subject", subject_tpl)
 
-    subject_env = Environment(autoescape=False)
+    # autoescape=False is correct here: this renders a plain-text email Subject
+    # header, not HTML — HTML-escaping would corrupt legitimate characters
+    # (&, <, >, quotes) in the rendered subject.
+    subject_env = Environment(autoescape=False)  # nosec B701
     subject = subject_env.from_string(subject_tpl).render(**ctx)
+    # Strip CR/LF to prevent email header injection via a crafted context value.
+    subject = subject.replace("\r", " ").replace("\n", " ")
 
     return subject, html
 

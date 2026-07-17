@@ -2,16 +2,15 @@
  * Tests — DashboardPage enrichi (Sprint 5.4 / 7.1 frontend)
  *
  * Couverture :
- *   - Bannière SLA overdue affichée si des paquets dépassent le SLA
- *   - Bannière SLA overdue absente si liste vide
- *   - Contenu de la bannière (nom paquet, jours)
+ *   - Tuile SLA overdue affichée (compteur + action) si des paquets dépassent le SLA
+ *   - Tuile SLA overdue absente si liste vide
  *   - Chart CVE trends rendu si données présentes
  *   - Appel getEnrichedDashboard au chargement
  *   - Pas de crash si getEnrichedDashboard échoue
  */
 
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 
@@ -113,11 +112,15 @@ describe('DashboardPage — bannière SLA overdue', () => {
     getDashboardHistory.mockResolvedValue({ history: [] });
   });
 
+  // La tuile "SLA de révision" (SlaViolationsPanel) est un résumé compact —
+  // count + libellé + action "Traiter →" — elle n'affiche plus le détail
+  // par paquet (nom/version/jours) ; le détail se consulte via la page
+  // Sécurité (bouton "Traiter →").
   test('affiche la bannière si des paquets dépassent le SLA', async () => {
     getEnrichedDashboard.mockResolvedValue(enrichedWithSla);
     renderDashboard();
     await waitFor(() => {
-      expect(screen.getByText(/dépassent le SLA de review/i)).toBeInTheDocument();
+      expect(screen.getByText(/dépassent le SLA de révision/i)).toBeInTheDocument();
     });
   });
 
@@ -125,42 +128,35 @@ describe('DashboardPage — bannière SLA overdue', () => {
     getEnrichedDashboard.mockResolvedValue(enrichedWithSla);
     renderDashboard();
     await waitFor(() => {
-      expect(screen.getByText(/2 paquet.s. dépassent/i)).toBeInTheDocument();
+      const panel = screen.getByText('SLA de révision').closest('.rounded-xl');
+      expect(within(panel).getByText('2')).toBeInTheDocument();
     });
   });
 
-  test('affiche les noms des paquets overdue', async () => {
+  test('propose une action pour traiter les paquets en dépassement', async () => {
     getEnrichedDashboard.mockResolvedValue(enrichedWithSla);
     renderDashboard();
     await waitFor(() => {
-      expect(screen.getByText(/openssl@3\.0\.1/)).toBeInTheDocument();
-      expect(screen.getByText(/curl@7\.8\.0/)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Traiter/i })).toBeInTheDocument();
     });
   });
 
-  test('affiche le nombre de jours', async () => {
-    getEnrichedDashboard.mockResolvedValue(enrichedWithSla);
-    renderDashboard();
-    await waitFor(() => {
-      expect(screen.getByText(/15j/)).toBeInTheDocument();
-    });
-  });
-
-  test('n\'affiche PAS la bannière si sla_overdue est vide', async () => {
+  test('affiche l\'état "aucun SLA dépassé" si sla_overdue est vide', async () => {
     getEnrichedDashboard.mockResolvedValue(enrichedNoSla);
     renderDashboard();
     await waitFor(() => getDashboardStats.mock.calls.length > 0);
     // Attendre que le contenu soit chargé
     await waitFor(() => screen.getByText(/Tableau de bord/i));
-    expect(screen.queryByText(/dépassent le SLA de review/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/Aucun SLA dépassé/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Traiter/i })).not.toBeInTheDocument();
   });
 
-  test('n\'affiche PAS la bannière si enriched est null', async () => {
+  test('affiche l\'état "aucun SLA dépassé" si enriched est null', async () => {
     getEnrichedDashboard.mockResolvedValue(null);
     renderDashboard();
     await waitFor(() => getDashboardStats.mock.calls.length > 0);
     await waitFor(() => screen.getByText(/Tableau de bord/i));
-    expect(screen.queryByText(/dépassent le SLA de review/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/Aucun SLA dépassé/i)).toBeInTheDocument();
   });
 });
 
@@ -196,11 +192,13 @@ describe('DashboardPage — section CVE Trends', () => {
     });
   });
 
-  test('n\'affiche PAS la section si cve_trends est vide', async () => {
+  // La tuile "Tendances CVE" reste montée en permanence dans la grille KPI —
+  // seul son contenu bascule vers un état vide quand cve_trends est vide.
+  test('affiche un état vide si cve_trends est vide', async () => {
     getEnrichedDashboard.mockResolvedValue(enrichedNoSla);
     renderDashboard();
     await waitFor(() => getDashboardStats.mock.calls.length > 0);
     await waitFor(() => screen.getByText(/Tableau de bord/i));
-    expect(screen.queryByText(/Tendances CVE/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/Aucune tendance disponible/i)).toBeInTheDocument();
   });
 });

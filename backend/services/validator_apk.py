@@ -166,7 +166,9 @@ def validate_control_checksum(apk_path: str, apk_control_checksum: str | None, r
             result.add_step("control_checksum", True, ".PKGINFO introuvable — vérification C: ignorée")
             return
 
-        actual_sha1 = hashlib.sha1(control_bytes).digest()
+        # SHA1 mandated by the APKINDEX "C:" field format itself (Alpine apk-tools
+        # spec) — a format-integrity checksum, not a security control.
+        actual_sha1 = hashlib.sha1(control_bytes, usedforsecurity=False).digest()
         if actual_sha1 != expected_sha1:
             expected_b64 = base64.b64encode(expected_sha1).decode()
             actual_b64 = base64.b64encode(actual_sha1).decode()

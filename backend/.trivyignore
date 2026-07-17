@@ -23,3 +23,5 @@ CVE-2026-24049  # wheel vendoré par pip, hors requirements.txt — revue 2026-0
 # Correctif dépend d'une nouvelle release upstream de grype — revue 2026-09-13.
 CVE-2026-34040  # dépendance Go embarquée dans le binaire grype — revue 2026-09-13
 CVE-2026-42504  # stdlib Go embarquée dans le binaire grype — revue 2026-09-13
+CVE-2026-27145  # stdlib Go (crypto/x509) embarquée dans le binaire grype — revue 2026-09-17
+CVE-2026-39822  # stdlib Go (os.Root) embarquée dans le binaire grype — revue 2026-09-17
