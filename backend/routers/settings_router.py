@@ -71,14 +71,18 @@ def read_settings(current_user: str = Depends(get_admin_user)):
 # ─── Mise à jour ──────────────────────────────────────────────────────────────
 
 class SettingsPatch(BaseModel):
-    app_url:       str | None = None
-    repo_url:      str | None = None
-    sync:          dict[str, Any] | None = None
-    sources:       dict[str, Any] | None = None
-    email:         dict[str, Any] | None = None
-    retention:     dict[str, Any] | None = None
-    validation:    dict[str, Any] | None = None
-    mirror:        dict[str, Any] | None = None
+    app_url:             str | None = None
+    repo_url:            str | None = None
+    sync:                dict[str, Any] | None = None
+    sources:             dict[str, Any] | None = None
+    email:               dict[str, Any] | None = None
+    retention:           dict[str, Any] | None = None
+    validation:          dict[str, Any] | None = None
+    mirror:              dict[str, Any] | None = None
+    cve_policy:          dict[str, Any] | None = None
+    security:            dict[str, Any] | None = None
+    epss_policy:         dict[str, Any] | None = None
+    notification_rules:  dict[str, Any] | None = None
 
 
 @router.patch("/")
