@@ -1,0 +1,58 @@
+# =============================================================================
+# docker-compose.letsencrypt.yml — Overlay Let's Encrypt pour Repod
+#
+# Prérequis :
+#   1. Un nom de domaine public pointant vers cette machine (ex: repod.example.com)
+#   2. Le port 80 accessible depuis Internet (pour la validation ACME HTTP-01)
+#   3. docker-compose.tls.yml chargé en même temps
+#
+# Usage :
+#   export REPOD_DOMAIN=repod.example.com
+#   export CERTBOT_EMAIL=admin@example.com
+#
+#   # Première émission :
+#   docker compose -f docker-compose.yaml -f docker-compose.tls.yml \
+#                  -f docker-compose.letsencrypt.yml up -d
+#   docker compose -f docker-compose.yaml -f docker-compose.tls.yml \
+#                  -f docker-compose.letsencrypt.yml run --rm certbot certonly
+#
+#   # Renouvellement (à planifier via cron ou systemd timer) :
+#   docker compose -f docker-compose.yaml -f docker-compose.tls.yml \
+#                  -f docker-compose.letsencrypt.yml run --rm certbot renew
+#   docker compose restart nginx-proxy
+#
+# Après émission, les certificats sont dans repos/certs/letsencrypt/live/$DOMAIN/.
+# Mettre à jour nginx/tls-proxy.conf pour pointer vers ces certificats :
+#   ssl_certificate     /certs/letsencrypt/live/repod.example.com/fullchain.pem;
+#   ssl_certificate_key /certs/letsencrypt/live/repod.example.com/privkey.pem;
+# =============================================================================
+
+services:
+
+  certbot:
+    image: certbot/certbot:latest
+    container_name: repod-certbot
+    volumes:
+      - ./repos/certs/letsencrypt:/etc/letsencrypt
+      - certbot_webroot:/var/www/certbot
+    entrypoint: >
+      certbot certonly
+        --webroot
+        --webroot-path=/var/www/certbot
+        --email ${CERTBOT_EMAIL:?Variable CERTBOT_EMAIL requise}
+        --agree-tos
+        --no-eff-email
+        --domain ${REPOD_DOMAIN:?Variable REPOD_DOMAIN requise}
+        --cert-path /etc/letsencrypt/live/${REPOD_DOMAIN}/cert.pem
+        --key-path  /etc/letsencrypt/live/${REPOD_DOMAIN}/privkey.pem
+    networks:
+      - repod_network
+
+  # Surcharge du proxy TLS pour utiliser les certs Let's Encrypt
+  nginx-proxy:
+    volumes:
+      - ./repos/certs/letsencrypt:/certs/letsencrypt:ro
+      - certbot_webroot:/var/www/certbot:rw
+
+volumes:
+  certbot_webroot:

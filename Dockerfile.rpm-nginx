@@ -1,0 +1,9 @@
+# Nginx minimaliste pour servir les dépôts RPM (createrepo_c)
+# Les arborescences {distrib}/{arch}/ sont gérées par le backend, pas ce conteneur
+FROM nginx:alpine
+
+RUN rm -f /etc/nginx/conf.d/default.conf
+COPY nginx/rpm.conf /etc/nginx/conf.d/repo.conf
+
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]

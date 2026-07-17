@@ -1,0 +1,94 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# GitLab CI — Template repod (upload, security gate)
+# ─────────────────────────────────────────────────────────────────────────────
+# Usage dans votre .gitlab-ci.yml :
+#
+#   include:
+#     - project: 'votre-groupe/repod'
+#       file: 'examples/ci/gitlab-repod.yml'
+#
+#   stages:
+#     - build
+#     - test
+#     - deploy
+#
+# Variables CI/CD requises (Settings → CI/CD → Variables, masquées) :
+#   REPOD_URL      : https://repo.example.com
+#   REPOD_USERNAME : Nom d'utilisateur (compte CI dédié)
+#   REPOD_PASSWORD : Mot de passe (masqué)
+# ─────────────────────────────────────────────────────────────────────────────
+
+variables:
+  REPOD_DISTRIBUTION: "jammy"          # Distribution APT cible
+  REPOD_ARCH: "amd64"                  # Architecture cible
+
+# ── Macro YAML : récupération du token JWT ────────────────────────────────────
+.repod-auth: &repod-auth
+  - |
+    echo "[repod] Authentification sur $REPOD_URL..."
+    REPOD_TOKEN=$(curl -sf -X POST \
+      --data-urlencode "username=$REPOD_USERNAME" \
+      --data-urlencode "password=$REPOD_PASSWORD" \
+      "$REPOD_URL/api/v1/auth/token" | jq -r '.access_token')
+    if [ -z "$REPOD_TOKEN" ] || [ "$REPOD_TOKEN" = "null" ]; then
+      echo "ERREUR : authentification repod échouée"
+      exit 1
+    fi
+    export REPOD_TOKEN
+    echo "[repod] Token obtenu (${#REPOD_TOKEN} chars)"
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# JOB 1 : Upload des paquets .deb vers repod
+# ═══════════════════════════════════════════════════════════════════════════════
+repod-upload:
+  stage: deploy
+  script:
+    - *repod-auth
+    - |
+      echo "[repod] Upload vers distribution $REPOD_DISTRIBUTION..."
+      for DEB in dist/*.deb; do
+        [ -f "$DEB" ] || { echo "Aucun .deb trouvé dans dist/"; exit 1; }
+        echo "📦 Upload : $DEB"
+        HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+          -H "Authorization: Bearer $REPOD_TOKEN" \
+          -F "file=@$DEB" \
+          -F "distribution=$REPOD_DISTRIBUTION" \
+          "$REPOD_URL/api/v1/upload")
+        if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "201" ]; then
+          echo "ERREUR : upload échoué (HTTP $HTTP_CODE)"
+          exit 1
+        fi
+        echo "✅ $DEB publié (HTTP $HTTP_CODE)"
+      done
+  rules:
+    - if: $CI_COMMIT_TAG                 # Seulement sur les tags de version
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# JOB 2 : Security gate — bloquer si CVE critique
+# ═══════════════════════════════════════════════════════════════════════════════
+repod-security-gate:
+  stage: test
+  script:
+    - *repod-auth
+    - |
+      echo "[repod] Récupération des vulnérabilités..."
+      RESPONSE=$(curl -sf \
+        -H "Authorization: Bearer $REPOD_TOKEN" \
+        "$REPOD_URL/api/v1/security/vulnerabilities?per_page=200")
+
+      CRITICAL=$(echo "$RESPONSE" | jq '[.vulnerabilities.items[] | select(.severity == "Critical")] | length')
+      HIGH=$(echo "$RESPONSE"     | jq '[.vulnerabilities.items[] | select(.severity == "High")]     | length')
+      TOTAL=$(echo "$RESPONSE"    | jq '.vulnerabilities.total // 0')
+
+      echo "📊 Total: $TOTAL | Critical: $CRITICAL | High: $HIGH"
+
+      if [ "$CRITICAL" -gt 0 ]; then
+        echo "ERREUR SÉCURITÉ : $CRITICAL vulnérabilité(s) critique(s) détectée(s)."
+        echo "Corrigez les CVE Critical avant de fusionner."
+        exit 1
+      fi
+
+      echo "✅ Aucune CVE critique. Pipeline autorisé."
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH

@@ -1,0 +1,24 @@
+server {
+    listen 80;
+    server_name _;
+
+    access_log /var/log/nginx/repo-access.log;
+    error_log /var/log/nginx/repo-error.log;
+
+    root /usr/share/nginx/html/repos;
+    autoindex on;
+
+    location / {
+        root /usr/share/nginx/html/repos;
+        autoindex on;
+    }
+
+    # Interdire l'accès aux fichiers de configuration de Reprepro
+    location ~ /(.*)/conf {
+        deny all;
+    }
+
+    location ~ /(.*)/db {
+        deny all;
+    }
+}
