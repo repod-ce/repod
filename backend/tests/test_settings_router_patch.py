@@ -70,11 +70,12 @@ def _fresh_settings_file():
 
 
 # ── Sections que le frontend peut envoyer (SettingsPage.js) ───────────────────
+# notification_rules est une LISTE (NotificationRulesSection.js), pas un dict —
+# testée séparément ci-dessous plutôt que dans cette table à payload dict.
 _SECTION_PAYLOADS = {
     "cve_policy":         {"critical": "block", "high": "review", "sla_high_days": 45},
     "security":           {"kev_ttl_hours": 12, "epss_ttl_hours": 6},
     "epss_policy":        {"threshold": 0.5, "action": "review"},
-    "notification_rules": {"SCAN_FAILED": {"email": True, "slack": False}},
     "sync":               {"enabled": False, "hour": 4, "minute": 15},
     "sources":            {"debian-security": True},
     "email":              {"smtp_host": "smtp.example.com"},
@@ -103,6 +104,18 @@ class TestSettingsPatchPersistsEverySection:
         assert r2.status_code == 200
         for key, value in payload.items():
             assert r2.json()[section].get(key) == value
+
+    def test_notification_rules_list_payload_is_persisted(self, client):
+        """notification_rules est une liste de règles {event, enabled, recipients},
+        pas un dict — vérifie que le type déclaré sur SettingsPatch (list, pas
+        dict) accepte bien la forme réelle envoyée par NotificationRulesSection.js."""
+        rules = [{"event": "SCAN_FAILED", "enabled": True, "recipients": ["alice"]}]
+        r = client.patch("/settings/", json={"notification_rules": rules})
+        assert r.status_code == 200, r.text
+        assert r.json()["notification_rules"] == rules
+
+        r2 = client.get("/settings/")
+        assert r2.json()["notification_rules"] == rules
 
     def test_unrelated_section_untouched_by_partial_patch(self, client):
         """Un PATCH sur cve_policy ne doit pas effacer une section sync déjà enregistrée."""

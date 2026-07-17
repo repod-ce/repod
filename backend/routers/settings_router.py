@@ -82,7 +82,7 @@ class SettingsPatch(BaseModel):
     cve_policy:          dict[str, Any] | None = None
     security:            dict[str, Any] | None = None
     epss_policy:         dict[str, Any] | None = None
-    notification_rules:  dict[str, Any] | None = None
+    notification_rules:  list[Any] | None = None
 
 
 @router.patch("/")
