@@ -55,6 +55,7 @@ const STEP_META = {
   sub_clamav:       { Icon: IconVirus,    label: "Antivirus ClamAV" },
   sub_cve:          { Icon: IconCVE,      label: "Analyse CVE" },
   sub_dependencies: { Icon: IconLink,     label: "Dépendances" },
+  auto_deps:        { Icon: IconLink,     label: "Résolution des dépendances manquantes" },
   pool:             { Icon: IconPackage,  label: "Déplacement vers le pool" },
   manifest:         { Icon: IconTag,      label: "Génération du manifest" },
   index:            { Icon: IconIndex,    label: "Mise à jour de l'index" },

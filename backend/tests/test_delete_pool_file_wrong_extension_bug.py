@@ -60,9 +60,17 @@ artifacts_mod.MANIFEST_DIR = Path(_TMP)
 artifacts_mod.POOL_DIR = Path(_TMP)
 
 # Un frozenset multi-format dont next(iter(...)) ne renvoie PAS ".deb" en
-# premier — reproduit le REPO_FORMAT=all vu en prod, sans dépendre du hasard
-# de l'ordre de hachage réel (on force explicitement le pire cas).
-_MULTI_FORMAT_EXTS = frozenset({".rpm", ".apk", ".deb"})
+# premier — reproduit le REPO_FORMAT=all vu en prod. Un frozenset({...})
+# ordinaire ne suffit pas ici : l'ordre d'itération d'un frozenset de str
+# dépend du hachage, randomisé par process (PYTHONHASHSEED) — le pire cas
+# n'est donc pas garanti d'un run à l'autre. __iter__ est explicitement
+# figé pour reproduire le pire cas de façon déterministe.
+class _DeterministicMultiFormatExts(frozenset):
+    def __iter__(self):
+        return iter((".rpm", ".apk", ".deb"))
+
+
+_MULTI_FORMAT_EXTS = _DeterministicMultiFormatExts({".rpm", ".apk", ".deb"})
 assert next(iter(_MULTI_FORMAT_EXTS)) != ".deb", (
     "précondition du test : l'extension devinée doit être fausse pour reproduire le bug"
 )

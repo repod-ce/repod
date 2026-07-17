@@ -116,6 +116,42 @@ def _check_duplicate(staged_path: Path, safe_filename: str) -> dict | None:
     }
 
 
+def _missing_dep_names(validation) -> list[str]:
+    """Noms des dépendances signalées absentes par validate_dependencies()
+    (déb : arbre transitif complet ; rpm/apk : Requires/depend directs
+    uniquement — asymétrie pré-existante entre formats, non modifiée ici).
+    available_internally absent (donnée incomplète) est traité comme
+    manquant, pas comme disponible : au pire, import_one() constatera que
+    le paquet est déjà indexé et renverra "skipped" sans effet — l'inverse
+    (ignorer silencieusement une dépendance réellement manquante) serait
+    pire pour une fonctionnalité dont le but est justement de combler ces
+    trous."""
+    return [d["name"] for d in (validation.deps or []) if not d.get("available_internally", False)]
+
+
+async def _auto_import_missing_deps(dep_names: list[str], distribution: str, user: str, group: str) -> list[dict]:
+    """
+    Tente d'importer automatiquement, depuis internet, chaque dépendance
+    manquante détectée par validate_dependencies() lors d'un dépôt manuel —
+    même pipeline complet (validation format/antivirus/CVE/politique) que
+    l'import depuis internet, via services.importer.import_one() (dispatché
+    par format selon la distribution cible).
+
+    Ne bloque jamais le paquet principal : un échec d'import d'une
+    dépendance ne fait pas échouer l'upload lui-même, il est simplement
+    rapporté tel quel dans le résultat.
+    """
+    from services.importer import import_one
+    results = []
+    for dep_name in dep_names:
+        try:
+            r = await asyncio.to_thread(import_one, {"name": dep_name}, distribution, user, group)
+        except Exception as e:
+            r = {"status": "error", "name": dep_name, "message": str(e)}
+        results.append(r)
+    return results
+
+
 def _accepted_ext_hint() -> str:
     """Message d'erreur lisible pour les extensions acceptées."""
     return " | ".join(sorted(ACCEPTED_EXTENSIONS))
@@ -315,6 +351,16 @@ async def upload_package(
 
     warnings = [s for s in validation.steps if s.get("warning") and not s["passed"]]
 
+    # Résolution automatique des dépendances manquantes détectées ci-dessus —
+    # même pipeline complet que l'import depuis internet, indépendant du
+    # statut CVE du paquet principal (une dépendance manquante est un
+    # artefact distinct avec sa propre décision de politique).
+    missing_dep_names = _missing_dep_names(validation)
+    dependencies_resolved = (
+        await _auto_import_missing_deps(missing_dep_names, distribution, current_user, manifest["name"])
+        if missing_dep_names else []
+    )
+
     # Notification si en attente de révision RSSI
     if cve_status == "pending_review":
         try:
@@ -341,6 +387,7 @@ async def upload_package(
             "sha256":     manifest["integrity"]["sha256"],
             "validation": validation.to_dict(),
             "warnings":   warnings,
+            "dependencies_resolved": dependencies_resolved,
             "message": (
                 f"{manifest['name']} {manifest['version']} importé mais "
                 "en attente de révision RSSI — non publié dans le dépôt"
@@ -351,6 +398,7 @@ async def upload_package(
         "status":     "accepted",
         "filename":   safe_filename,
         "format":     REPO_FORMAT,
+        "dependencies_resolved": dependencies_resolved,
         "package":    manifest["name"],
         "version":    manifest["version"],
         "arch":       manifest["arch"],
@@ -499,6 +547,49 @@ async def _upload_stream_generator(
             yield step("repo_add", _repo_label, "warn",
                        "En attente de révision RSSI — non publié dans le dépôt")
 
+        # Résolution automatique des dépendances manquantes détectées par
+        # l'étape "dependencies" ci-dessus — même pipeline complet que
+        # l'import depuis internet, indépendant du statut CVE du paquet
+        # principal (une dépendance manquante est un artefact distinct
+        # avec sa propre décision de politique).
+        missing_dep_names = _missing_dep_names(validation)
+        dependencies_resolved: list[dict] = []
+        if missing_dep_names:
+            yield step("auto_deps", "Résolution des dépendances manquantes", "running",
+                       f"{len(missing_dep_names)} dépendance(s) à importer depuis internet")
+            from services.importer import import_one as _import_dep
+            n_added, n_pending, n_failed = 0, 0, 0
+            for dep_name in missing_dep_names:
+                try:
+                    dep_result = await asyncio.to_thread(
+                        _import_dep, {"name": dep_name}, distribution, current_user, manifest["name"]
+                    )
+                except Exception as e:
+                    dep_result = {"status": "error", "name": dep_name, "message": str(e)}
+                dependencies_resolved.append(dep_result)
+                dep_status = dep_result.get("status")
+                if dep_status == "added":
+                    n_added += 1
+                    yield step(f"sub_dep_{dep_name}", dep_name, "done",
+                               dep_result.get("message", "ajouté au dépôt"))
+                elif dep_status == "pending_review":
+                    n_pending += 1
+                    yield step(f"sub_dep_{dep_name}", dep_name, "warn",
+                               "en attente révision RSSI (non publié)")
+                elif dep_status == "skipped":
+                    yield step(f"sub_dep_{dep_name}", dep_name, "done",
+                               dep_result.get("message", "déjà présent dans le dépôt"))
+                else:
+                    n_failed += 1
+                    yield step(f"sub_dep_{dep_name}", dep_name, "error",
+                               dep_result.get("message", "échec de l'import"))
+            summary_parts = [f"{n_added} ajoutée(s)"]
+            if n_pending: summary_parts.append(f"{n_pending} en révision RSSI")
+            if n_failed:  summary_parts.append(f"{n_failed} échouée(s)")
+            yield step("auto_deps", "Résolution des dépendances manquantes",
+                       "error" if n_failed and not n_added else "done",
+                       ", ".join(summary_parts))
+
         if cve_status == "pending_review":
             try:
                 cve_counts, kev_count, worst = compute_cve_summary(validation.cve_results or [])
@@ -533,6 +624,7 @@ async def _upload_stream_generator(
             "arch":         manifest["arch"],
             "sha256":       manifest["integrity"]["sha256"],
             "distribution": distribution,
+            "dependencies_resolved": dependencies_resolved,
             "message": (
                 f"{manifest['name']} {manifest['version']} importé — en attente de révision RSSI"
                 if cve_status == "pending_review"
