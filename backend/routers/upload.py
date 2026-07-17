@@ -129,6 +129,30 @@ def _missing_dep_names(validation) -> list[str]:
     return [d["name"] for d in (validation.deps or []) if not d.get("available_internally", False)]
 
 
+# Garde-fou contre un graphe de dépendances pathologique/circulaire — même
+# convention que la limite "50 paquets" déjà appliquée ailleurs (import par
+# lot, voir ImportPage.js:BatchImportTab).
+_MAX_AUTO_IMPORT_DEPS = 50
+
+
+def _sub_missing_deps(pkg_name: str) -> list[str]:
+    """
+    Après l'import d'une dépendance, ses propres dépendances manquantes
+    (calculées à l'import et déjà stockées dans l'index — voir
+    services/indexer.py:add_to_index()'s "deps_missing") — c'est la SEULE
+    façon de les découvrir : validate_dependencies() ne peut lire le champ
+    Depends que d'un fichier .deb présent localement, donc tant qu'une
+    dépendance n'a pas été téléchargée, ses propres sous-dépendances sont
+    invisibles depuis le paquet parent.
+    """
+    from services.indexer import get_package_info
+    info = get_package_info(pkg_name)
+    if not info:
+        return []
+    latest = info.get("latest")
+    return (info.get("versions", {}).get(latest, {}) or {}).get("deps_missing", [])
+
+
 async def _auto_import_missing_deps(dep_names: list[str], distribution: str, user: str, group: str) -> list[dict]:
     """
     Tente d'importer automatiquement, depuis internet, chaque dépendance
@@ -137,18 +161,34 @@ async def _auto_import_missing_deps(dep_names: list[str], distribution: str, use
     l'import depuis internet, via services.importer.import_one() (dispatché
     par format selon la distribution cible).
 
+    Transitif : après chaque import réussi, ses propres dépendances
+    manquantes (voir _sub_missing_deps()) sont ajoutées à la file — le
+    pipeline complet (Clam/Grype/SHA/politique) s'applique à CHAQUE paquet
+    découvert, pas seulement au premier niveau, jusqu'à ce qu'aucun nouveau
+    paquet ne soit découvert (point fixe) ou que _MAX_AUTO_IMPORT_DEPS soit
+    atteint (protection contre un graphe pathologique/circulaire).
+
     Ne bloque jamais le paquet principal : un échec d'import d'une
     dépendance ne fait pas échouer l'upload lui-même, il est simplement
     rapporté tel quel dans le résultat.
     """
     from services.importer import import_one
     results = []
-    for dep_name in dep_names:
+    queue = list(dict.fromkeys(dep_names))  # dé-doublonné, ordre préservé
+    seen = set(queue)
+    while queue and len(results) < _MAX_AUTO_IMPORT_DEPS:
+        dep_name = queue.pop(0)
         try:
             r = await asyncio.to_thread(import_one, {"name": dep_name}, distribution, user, group)
         except Exception as e:
             r = {"status": "error", "name": dep_name, "message": str(e)}
         results.append(r)
+
+        if r.get("status") in ("added", "pending_review"):
+            for sub_name in await asyncio.to_thread(_sub_missing_deps, r.get("name", dep_name)):
+                if sub_name not in seen:
+                    seen.add(sub_name)
+                    queue.append(sub_name)
     return results
 
 
@@ -534,7 +574,7 @@ async def _upload_stream_generator(
         add_to_index(manifest)
         yield step("index", "Mise à jour de l'index", "done")
 
-        _repo_label = f"Ajout au dépôt {REPO_FORMAT.upper()} ({REPO_TOOL_LABEL})"
+        _repo_label = "Ajout au dépôt"
         repo_ok = False
         if cve_status != "pending_review":
             yield step("repo_add", _repo_label, "running",
@@ -559,7 +599,15 @@ async def _upload_stream_generator(
                        f"{len(missing_dep_names)} dépendance(s) à importer depuis internet")
             from services.importer import import_one as _import_dep
             n_added, n_pending, n_failed = 0, 0, 0
-            for dep_name in missing_dep_names:
+            # File de traitement transitive : chaque dépendance importée
+            # avec succès peut révéler ses propres dépendances manquantes
+            # (voir _sub_missing_deps()) — elles sont ajoutées à la file et
+            # passent par le même pipeline complet, jusqu'à épuisement
+            # (point fixe) ou _MAX_AUTO_IMPORT_DEPS.
+            dep_queue = list(dict.fromkeys(missing_dep_names))
+            dep_seen = set(dep_queue)
+            while dep_queue and len(dependencies_resolved) < _MAX_AUTO_IMPORT_DEPS:
+                dep_name = dep_queue.pop(0)
                 try:
                     dep_result = await asyncio.to_thread(
                         _import_dep, {"name": dep_name}, distribution, current_user, manifest["name"]
@@ -583,6 +631,14 @@ async def _upload_stream_generator(
                     n_failed += 1
                     yield step(f"sub_dep_{dep_name}", dep_name, "error",
                                dep_result.get("message", "échec de l'import"))
+
+                if dep_status in ("added", "pending_review"):
+                    for sub_name in await asyncio.to_thread(_sub_missing_deps, dep_result.get("name", dep_name)):
+                        if sub_name not in dep_seen:
+                            dep_seen.add(sub_name)
+                            dep_queue.append(sub_name)
+                            yield step("auto_deps", "Résolution des dépendances manquantes", "running",
+                                       f"  ↳ sous-dépendance découverte : {sub_name}")
             summary_parts = [f"{n_added} ajoutée(s)"]
             if n_pending: summary_parts.append(f"{n_pending} en révision RSSI")
             if n_failed:  summary_parts.append(f"{n_failed} échouée(s)")

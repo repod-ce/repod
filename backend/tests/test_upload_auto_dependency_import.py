@@ -30,6 +30,14 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+# routers/__init__.py does `from .upload import router as upload`, which
+# shadows the routers.upload SUBMODULE reference at the package level with
+# the router object itself — patch("routers.upload.X", ...) (string form)
+# resolves via that shadowed attribute and raises AttributeError. importlib
+# bypasses it and returns the real registered submodule — see
+# test_importer_pending_review_gate.py's twin issue with services.importer.
+_upload_mod = importlib.import_module("routers.upload")
+
 
 @pytest.fixture(autouse=True)
 def _fresh_importer_module():
@@ -147,6 +155,112 @@ class TestAutoImportMissingDeps:
             results = asyncio.run(_auto_import_missing_deps([], "jammy", "admin", "pkg"))
         mock_import_one.assert_not_called()
         assert results == []
+
+
+class TestAutoImportMissingDepsTransitive:
+    """validate_dependencies() ne peut lire le champ Depends que d'un .deb
+    déjà présent localement — pour un paquet réellement manquant, ses PROPRES
+    dépendances sont invisibles depuis le paquet parent. La seule façon de
+    les découvrir est d'importer le paquet d'abord, puis de relire ses
+    deps_missing (calculées à l'import, stockées dans l'index par
+    add_to_index()). _auto_import_missing_deps() doit boucler jusqu'à
+    épuisement (aucune nouvelle découverte), pas s'arrêter au premier
+    niveau."""
+
+    def test_discovers_and_imports_sub_dependencies(self):
+        from routers.upload import _auto_import_missing_deps
+
+        # libgcc-s1 manque → importé → révèle que libc6 lui manque à SON tour
+        # → libc6 importé → ne révèle plus rien (point fixe atteint).
+        import_results = {
+            "libgcc-s1": {"status": "added", "name": "libgcc-s1"},
+            "libc6":     {"status": "added", "name": "libc6"},
+        }
+        sub_deps = {"libgcc-s1": ["libc6"], "libc6": []}
+
+        mock_import_one = MagicMock(side_effect=lambda pkg_row, distribution, user, group: import_results[pkg_row["name"]])
+
+        with patch("services.importer.import_one", mock_import_one), \
+             patch.object(_upload_mod, "_sub_missing_deps", side_effect=lambda name: sub_deps.get(name, [])):
+            results = asyncio.run(_auto_import_missing_deps(["libgcc-s1"], "jammy", "admin", "webapp"))
+
+        assert [r["name"] for r in results] == ["libgcc-s1", "libc6"]
+        assert mock_import_one.call_count == 2
+        mock_import_one.assert_any_call({"name": "libgcc-s1"}, "jammy", "admin", "webapp")
+        mock_import_one.assert_any_call({"name": "libc6"}, "jammy", "admin", "webapp")
+
+    def test_does_not_reimport_an_already_queued_or_processed_dependency(self):
+        """Un graphe en losange (A et B dépendent tous deux de C) ne doit
+        importer C qu'une seule fois, pas une fois par prédécesseur."""
+        from routers.upload import _auto_import_missing_deps
+
+        import_results = {
+            "pkg-a": {"status": "added", "name": "pkg-a"},
+            "pkg-b": {"status": "added", "name": "pkg-b"},
+            "pkg-c": {"status": "added", "name": "pkg-c"},
+        }
+        sub_deps = {"pkg-a": ["pkg-c"], "pkg-b": ["pkg-c"], "pkg-c": []}
+
+        mock_import_one = MagicMock(side_effect=lambda pkg_row, distribution, user, group: import_results[pkg_row["name"]])
+
+        with patch("services.importer.import_one", mock_import_one), \
+             patch.object(_upload_mod, "_sub_missing_deps", side_effect=lambda name: sub_deps.get(name, [])):
+            results = asyncio.run(_auto_import_missing_deps(["pkg-a", "pkg-b"], "jammy", "admin", "webapp"))
+
+        assert sorted(r["name"] for r in results) == ["pkg-a", "pkg-b", "pkg-c"]
+        assert mock_import_one.call_count == 3, "pkg-c ne doit être importé qu'une seule fois malgré deux prédécesseurs"
+
+    def test_circular_dependency_does_not_loop_forever(self):
+        """A dépend de B, B dépend de A — sans garde-fou seen(), la file
+        grossirait indéfiniment."""
+        from routers.upload import _auto_import_missing_deps
+
+        import_results = {
+            "pkg-a": {"status": "added", "name": "pkg-a"},
+            "pkg-b": {"status": "added", "name": "pkg-b"},
+        }
+        sub_deps = {"pkg-a": ["pkg-b"], "pkg-b": ["pkg-a"]}
+
+        mock_import_one = MagicMock(side_effect=lambda pkg_row, distribution, user, group: import_results[pkg_row["name"]])
+
+        with patch("services.importer.import_one", mock_import_one), \
+             patch.object(_upload_mod, "_sub_missing_deps", side_effect=lambda name: sub_deps.get(name, [])):
+            results = asyncio.run(_auto_import_missing_deps(["pkg-a"], "jammy", "admin", "webapp"))
+
+        assert sorted(r["name"] for r in results) == ["pkg-a", "pkg-b"]
+        assert mock_import_one.call_count == 2
+
+    def test_max_total_caps_a_pathological_dependency_chain(self):
+        """Une chaîne artificiellement longue (pkg-0 → pkg-1 → pkg-2 → …) ne
+        doit jamais dépasser _MAX_AUTO_IMPORT_DEPS imports."""
+        from routers.upload import _MAX_AUTO_IMPORT_DEPS, _auto_import_missing_deps
+
+        def fake_import(pkg_row, distribution, user, group):
+            return {"status": "added", "name": pkg_row["name"]}
+
+        def fake_sub_deps(name):
+            n = int(name.split("-")[1])
+            return [f"pkg-{n + 1}"]
+
+        with patch("services.importer.import_one", side_effect=fake_import) as mock_import_one, \
+             patch.object(_upload_mod, "_sub_missing_deps", side_effect=fake_sub_deps):
+            results = asyncio.run(_auto_import_missing_deps(["pkg-0"], "jammy", "admin", "webapp"))
+
+        assert len(results) == _MAX_AUTO_IMPORT_DEPS
+        assert mock_import_one.call_count == _MAX_AUTO_IMPORT_DEPS
+
+    def test_failed_dependency_is_not_probed_for_sub_dependencies(self):
+        """Une dépendance qui échoue n'a pas de manifest/index — inutile
+        (et impossible) d'aller chercher ses deps_missing."""
+        from routers.upload import _auto_import_missing_deps
+
+        with patch("services.importer.import_one",
+                   return_value={"status": "error", "name": "broken", "message": "boom"}), \
+             patch.object(_upload_mod, "_sub_missing_deps") as mock_sub_deps:
+            results = asyncio.run(_auto_import_missing_deps(["broken"], "jammy", "admin", "webapp"))
+
+        assert len(results) == 1
+        mock_sub_deps.assert_not_called()
 
 
 # ─── Intégration : POST /upload/ appelle bien la résolution automatique ──────
