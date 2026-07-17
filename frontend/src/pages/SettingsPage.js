@@ -661,6 +661,22 @@ function CvePolicySection({ settings, onChange }) {
       icon={<svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>}
     >
       <div className="space-y-4">
+        {/* Avertissement si aucune politique n'est réellement enregistrée :
+            tant que cve_policy est vide côté serveur, le backend retombe sur
+            un mode historique binaire (bloque uniquement si ≥ CRITICAL,
+            AUCUN palier "révision" n'existe dans ce mode) — très différent
+            de ce que les boutons ci-dessous pourraient laisser croire avant
+            toute sauvegarde. */}
+        {Object.keys(pol).length === 0 && (
+          <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-xs text-amber-700">
+            <svg className="w-3.5 h-3.5 inline mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            Aucune politique n'est encore enregistrée. Tant qu'aucun choix
+            n'est fait ci-dessous puis sauvegardé, le serveur utilise un mode
+            historique qui ne bloque que les CVE CRITICAL — aucune révision
+            RSSI n'est déclenchée pour HIGH/MEDIUM/LOW, même si les boutons
+            semblent présélectionnés.
+          </div>
+        )}
         {/* Grille severité → action */}
         {[
           { key: "critical",   label: "CRITICAL",   desc: "CVE de score CVSS ≥ 9" },
@@ -671,11 +687,16 @@ function CvePolicySection({ settings, onChange }) {
         ].map(({ key, label, desc }) => (
           <div key={key} className="flex items-center justify-between gap-4">
             <div>
-              <p className="text-sm font-semibold text-gray-800">{label}</p>
+              <p className="text-sm font-semibold text-gray-800">
+                {label}
+                {pol[key] === undefined && (
+                  <span className="ml-2 text-[10px] font-normal text-amber-600 align-middle">non enregistré</span>
+                )}
+              </p>
               <p className="text-xs text-gray-400">{desc}</p>
             </div>
             <PolicySelect
-              value={pol[key] || (key === "critical" ? "block" : key === "high" ? "review" : "allow")}
+              value={pol[key]}
               onChange={(v) => set(key, v)}
             />
           </div>

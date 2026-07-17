@@ -21,7 +21,11 @@ from services.security_decisions import (
 )
 from services.pagination import paginate
 from services.format_router import DEFAULT_DISTRIBUTION as _DEFAULT_DISTRIBUTION
-from routers.security_common import _parse_cve_message
+from routers.security_common import (
+    _cve_message_is_inconclusive,
+    _parse_cve_message,
+    has_conclusive_cve_scan,
+)
 
 router = APIRouter(prefix="/security", tags=["Security"])
 
@@ -171,8 +175,7 @@ def get_packages_posture(
             for step in m.get("validation_steps", []):
                 if step.get("name") == "cve":
                     msg = step.get("message", "")
-                    lower = msg.lower()
-                    if "non disponible" not in lower and "ignoré" not in lower and "timeout" not in lower:
+                    if not _cve_message_is_inconclusive(msg):
                         scanned = True
                         scan_source = "grype-legacy"
                         parsed = _parse_cve_message(msg)
@@ -306,7 +309,14 @@ def get_package_cve(
         "cve_counts": counts,
         "total": len(cve_results),
         "cve_results": sorted(cve_results, key=_sev_sort),
-        "has_structured_data": len(cve_results) > 0,
+        # len(cve_results) > 0 confondait "jamais scanné" et "scanné,
+        # confirmé sain" (cve_results est vide dans les deux cas) — un
+        # paquet réellement propre affichait donc à tort l'avertissement
+        # "importé avant la collecte structurée". has_conclusive_cve_scan()
+        # regarde aussi le message de l'étape de validation "cve" pour
+        # distinguer un scan concluant (même sans CVE trouvée) d'un scan
+        # jamais exécuté ou inexploitable.
+        "has_structured_data": has_conclusive_cve_scan(manifest),
     }
 
 
