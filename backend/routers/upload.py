@@ -153,6 +153,52 @@ def _sub_missing_deps(pkg_name: str) -> list[str]:
     return (info.get("versions", {}).get(latest, {}) or {}).get("deps_missing", [])
 
 
+def _is_index_miss(dep_result: dict) -> bool:
+    """
+    Détecte un échec dû à une dépendance absente de l'index local de
+    synchronisation (pas encore récupérée depuis la source publique) — la
+    seule cause d'échec qu'une resynchronisation peut réellement résoudre.
+
+    Le message est la seule source fiable : importer_apt.py renvoie
+    status="error" pour ce cas, alors qu'importer_rpm.py/importer_apk.py
+    renvoient status="skipped" pour le même cas (incohérence pré-existante,
+    non corrigée ici) — on ne peut donc pas se fier uniquement au champ
+    status, commun aux trois formats via services/importer.py.
+    """
+    return "introuvable dans l'index" in (dep_result.get("message") or "")
+
+
+async def _sync_index_for_distribution(distribution: str) -> None:
+    """
+    Resynchronise l'index de paquets (source publique → base SQLite
+    interne) pour le format de la distribution cible — déclenché par le
+    pipeline de dépôt manuel quand une dépendance manquante n'est pas (ou
+    plus) dans l'index, plutôt que d'obliger l'utilisateur à aller cliquer
+    "Sync index" sur une autre page. Best-effort : une synchronisation qui
+    échoue (réseau, source indisponible) ne doit pas faire échouer le
+    dépôt du paquet principal — le second essai de import_one() échouera
+    simplement avec le même message qu'avant, sans régression.
+    """
+    ext, _ = _expected_ext_for_distrib(distribution)
+    try:
+        if ext == ".rpm":
+            from services.package_index_rpm import sync_all as _sync_all
+        elif ext == ".apk":
+            from services.package_index_apk import sync_all as _sync_all
+        else:
+            from services.package_index_apt import sync_all as _sync_all
+        await asyncio.to_thread(_sync_all)
+    except Exception:
+        pass
+
+
+async def _import_dep_or_error(import_one, dep_name: str, distribution: str, user: str, group: str) -> dict:
+    try:
+        return await asyncio.to_thread(import_one, {"name": dep_name}, distribution, user, group)
+    except Exception as e:
+        return {"status": "error", "name": dep_name, "message": str(e)}
+
+
 async def _auto_import_missing_deps(dep_names: list[str], distribution: str, user: str, group: str) -> list[dict]:
     """
     Tente d'importer automatiquement, depuis internet, chaque dépendance
@@ -176,12 +222,16 @@ async def _auto_import_missing_deps(dep_names: list[str], distribution: str, use
     results = []
     queue = list(dict.fromkeys(dep_names))  # dé-doublonné, ordre préservé
     seen = set(queue)
+    synced_once = False
     while queue and len(results) < _MAX_AUTO_IMPORT_DEPS:
         dep_name = queue.pop(0)
-        try:
-            r = await asyncio.to_thread(import_one, {"name": dep_name}, distribution, user, group)
-        except Exception as e:
-            r = {"status": "error", "name": dep_name, "message": str(e)}
+        r = await _import_dep_or_error(import_one, dep_name, distribution, user, group)
+
+        if _is_index_miss(r) and not synced_once:
+            synced_once = True
+            await _sync_index_for_distribution(distribution)
+            r = await _import_dep_or_error(import_one, dep_name, distribution, user, group)
+
         results.append(r)
 
         if r.get("status") in ("added", "pending_review"):
@@ -606,14 +656,20 @@ async def _upload_stream_generator(
             # (point fixe) ou _MAX_AUTO_IMPORT_DEPS.
             dep_queue = list(dict.fromkeys(missing_dep_names))
             dep_seen = set(dep_queue)
+            dep_synced_once = False
             while dep_queue and len(dependencies_resolved) < _MAX_AUTO_IMPORT_DEPS:
                 dep_name = dep_queue.pop(0)
-                try:
-                    dep_result = await asyncio.to_thread(
-                        _import_dep, {"name": dep_name}, distribution, current_user, manifest["name"]
-                    )
-                except Exception as e:
-                    dep_result = {"status": "error", "name": dep_name, "message": str(e)}
+                dep_result = await _import_dep_or_error(_import_dep, dep_name, distribution, current_user, manifest["name"])
+
+                if _is_index_miss(dep_result) and not dep_synced_once:
+                    dep_synced_once = True
+                    yield step("auto_deps", "Résolution des dépendances manquantes", "running",
+                               "Synchronisation de l'index en cours…")
+                    await _sync_index_for_distribution(distribution)
+                    yield step("auto_deps", "Résolution des dépendances manquantes", "running",
+                               "Synchronisation terminée — reprise de l'import")
+                    dep_result = await _import_dep_or_error(_import_dep, dep_name, distribution, current_user, manifest["name"])
+
                 dependencies_resolved.append(dep_result)
                 dep_status = dep_result.get("status")
                 if dep_status == "added":
@@ -631,6 +687,20 @@ async def _upload_stream_generator(
                     n_failed += 1
                     yield step(f"sub_dep_{dep_name}", dep_name, "error",
                                dep_result.get("message", "échec de l'import"))
+
+                # Détail complet du pipeline de scan pour cette dépendance
+                # (format/provenance/antivirus/CVE/GPG/dépendances) — même
+                # niveau de détail que pour le paquet principal, jusqu'ici
+                # invisible dans le frontend malgré sa présence dans
+                # dependencies_resolved.
+                for vs in dep_result.get("steps", []):
+                    vs_name    = vs.get("name", "")
+                    vs_passed  = vs.get("passed", False)
+                    vs_warning = vs.get("warning", False)
+                    vs_status  = "done" if (vs_passed or vs_warning) else "error"
+                    vs_label   = _step_labels.get(vs_name, vs_name)
+                    yield step(f"sub_dep_{dep_name}_{vs_name}", f"{dep_name} — {vs_label}", vs_status,
+                               vs.get("message", ""), vs.get("detail", ""))
 
                 if dep_status in ("added", "pending_review"):
                     for sub_name in await asyncio.to_thread(_sub_missing_deps, dep_result.get("name", dep_name)):

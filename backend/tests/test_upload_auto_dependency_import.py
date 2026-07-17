@@ -43,23 +43,30 @@ _upload_mod = importlib.import_module("routers.upload")
 def _fresh_importer_module():
     """
     tests/test_rpm_format_services.py's _reload_module() sweeps sys.modules
-    for anything containing "importer" (among other format-dependent
-    modules) and deletes it, without re-importing it afterward — the
-    `services` package keeps a now-orphaned `importer` attribute pointing
-    at the deleted module object. unittest.mock.patch("services.importer.X")
-    resolves its target via getattr(services_pkg, "importer") *before*
-    falling back to sys.modules, so when this test runs after that reload
-    helper, patch() ends up patching the orphaned object — never the one a
-    native import (like import_one()'s own internal imports) would
-    actually use, silently desyncing the mock from the code under test.
-    Forcing a native reload/import here first keeps sys.modules and the
-    parent package's attribute consistent — see the identical issue and
-    fix in test_importer_pending_review_gate.py.
+    for anything containing "importer" OR "package_index" (among other
+    format-dependent modules) and deletes it, without re-importing it
+    afterward. Whatever the exact mechanism a given orphaned entry ends up
+    desyncing mock.patch("services.X.Y") from the code under test — see the
+    detailed explanation for services.importer in
+    test_importer_pending_review_gate.py — the observed symptom is
+    identical here for services.package_index_apt/_rpm/_apk (used by
+    _sync_index_for_distribution()): passes in isolation, but a mocked
+    sync_all() silently doesn't take effect after the full suite runs
+    test_rpm_format_services.py first, and the REAL sync_all() then hangs
+    on a genuine network call in this sandboxed test env. Forcing a native
+    reimport of each here first keeps sys.modules consistent before every
+    test in this file, regardless of the exact desync mechanism.
     """
-    if "services.importer" in sys.modules:
-        importlib.reload(sys.modules["services.importer"])
-    else:
-        import services.importer  # noqa: F401
+    for _mod_name in (
+        "services.importer",
+        "services.package_index_apt",
+        "services.package_index_rpm",
+        "services.package_index_apk",
+    ):
+        if _mod_name in sys.modules:
+            importlib.reload(sys.modules[_mod_name])
+        else:
+            importlib.import_module(_mod_name)
 
 
 class TestMissingDepNames:
@@ -155,6 +162,148 @@ class TestAutoImportMissingDeps:
             results = asyncio.run(_auto_import_missing_deps([], "jammy", "admin", "pkg"))
         mock_import_one.assert_not_called()
         assert results == []
+
+
+class TestIsIndexMiss:
+    def test_detects_the_apt_error_status_case(self):
+        """importer_apt.py renvoie status="error" (pas "skipped") pour une
+        dépendance absente de l'index — la détection ne peut donc pas se
+        fier au champ status, uniquement au message."""
+        from routers.upload import _is_index_miss
+
+        assert _is_index_miss({
+            "status": "error", "name": "libblas3",
+            "message": "'libblas3' introuvable dans l'index — lancez une synchronisation",
+        }) is True
+
+    def test_detects_the_rpm_apk_skipped_status_case(self):
+        from routers.upload import _is_index_miss
+
+        assert _is_index_miss({
+            "status": "skipped", "name": "libblas3",
+            "message": "'libblas3' introuvable dans l'index — lancez une synchronisation",
+        }) is True
+
+    def test_unrelated_error_is_not_an_index_miss(self):
+        from routers.upload import _is_index_miss
+
+        assert _is_index_miss({"status": "error", "message": "Erreur réseau : timeout"}) is False
+
+    def test_missing_message_key_is_not_an_index_miss(self):
+        from routers.upload import _is_index_miss
+
+        assert _is_index_miss({"status": "error"}) is False
+
+
+class TestSyncIndexForDistribution:
+    def test_dispatches_to_apt_sync_for_deb_distribution(self):
+        from routers.upload import _sync_index_for_distribution
+
+        with patch("services.package_index_apt.sync_all") as mock_sync:
+            asyncio.run(_sync_index_for_distribution("jammy"))
+        mock_sync.assert_called_once()
+
+    def test_dispatches_to_rpm_sync_for_rpm_distribution(self):
+        from routers.upload import _sync_index_for_distribution
+
+        with patch("services.package_index_rpm.sync_all") as mock_sync:
+            asyncio.run(_sync_index_for_distribution("almalinux9"))
+        mock_sync.assert_called_once()
+
+    def test_dispatches_to_apk_sync_for_apk_distribution(self):
+        from routers.upload import _sync_index_for_distribution
+
+        with patch("services.package_index_apk.sync_all") as mock_sync:
+            asyncio.run(_sync_index_for_distribution("alpine3.19"))
+        mock_sync.assert_called_once()
+
+    def test_sync_failure_is_swallowed_not_raised(self):
+        """Un réseau indisponible pendant la resynchronisation ne doit
+        jamais faire planter le dépôt du paquet principal."""
+        from routers.upload import _sync_index_for_distribution
+
+        with patch("services.package_index_apt.sync_all", side_effect=RuntimeError("réseau down")):
+            asyncio.run(_sync_index_for_distribution("jammy"))  # ne lève pas
+
+
+class TestAutoImportMissingDepsSyncRetry:
+    def test_index_miss_triggers_one_sync_then_retries(self):
+        from routers.upload import _auto_import_missing_deps
+
+        call_log = []
+
+        def fake_import(pkg_row, distribution, user, group):
+            call_log.append(pkg_row["name"])
+            if pkg_row["name"] == "libblas3" and call_log.count("libblas3") == 1:
+                return {"status": "error", "name": "libblas3",
+                        "message": "'libblas3' introuvable dans l'index — lancez une synchronisation"}
+            return {"status": "added", "name": pkg_row["name"]}
+
+        with patch("services.importer.import_one", side_effect=fake_import), \
+             patch.object(_upload_mod, "_sync_index_for_distribution") as mock_sync, \
+             patch.object(_upload_mod, "_sub_missing_deps", return_value=[]):
+            results = asyncio.run(_auto_import_missing_deps(["libblas3"], "jammy", "admin", "nmap"))
+
+        mock_sync.assert_called_once_with("jammy")
+        assert len(results) == 1
+        assert results[0]["status"] == "added", "le second essai après sync doit réussir"
+        assert call_log.count("libblas3") == 2, "un seul essai avant sync, un seul après"
+
+    def test_sync_is_triggered_only_once_for_multiple_index_misses_in_the_same_batch(self):
+        """4 dépendances manquantes du même index — une seule synchronisation
+        doit suffire pour les 4, pas une par dépendance."""
+        from routers.upload import _auto_import_missing_deps
+
+        synced = {"done": False}
+
+        def fake_import(pkg_row, distribution, user, group):
+            if not synced["done"]:
+                return {"status": "error", "name": pkg_row["name"],
+                        "message": f"'{pkg_row['name']}' introuvable dans l'index — lancez une synchronisation"}
+            return {"status": "added", "name": pkg_row["name"]}
+
+        def fake_sync(distribution):
+            synced["done"] = True
+
+        with patch("services.importer.import_one", side_effect=fake_import), \
+             patch.object(_upload_mod, "_sync_index_for_distribution", side_effect=fake_sync) as mock_sync, \
+             patch.object(_upload_mod, "_sub_missing_deps", return_value=[]):
+            results = asyncio.run(_auto_import_missing_deps(
+                ["libblas3", "libgpg-error0", "liblz4-1", "libzstd1"], "jammy", "admin", "nmap"
+            ))
+
+        mock_sync.assert_called_once()
+        assert all(r["status"] == "added" for r in results), (
+            "après la synchronisation déclenchée par le premier échec, les 3 autres "
+            "doivent réussir dès leur premier essai — pas besoin d'un essai par paquet"
+        )
+
+    def test_still_missing_after_sync_is_reported_as_a_real_failure(self):
+        """Un paquet qui n'existe tout simplement pas (mauvais nom, jamais
+        publié) doit rester en échec même après une resynchronisation."""
+        from routers.upload import _auto_import_missing_deps
+
+        with patch("services.importer.import_one",
+                   return_value={"status": "error", "name": "does-not-exist",
+                                 "message": "'does-not-exist' introuvable dans l'index — lancez une synchronisation"}), \
+             patch.object(_upload_mod, "_sync_index_for_distribution") as mock_sync, \
+             patch.object(_upload_mod, "_sub_missing_deps", return_value=[]):
+            results = asyncio.run(_auto_import_missing_deps(["does-not-exist"], "jammy", "admin", "nmap"))
+
+        mock_sync.assert_called_once()
+        assert results[0]["status"] == "error"
+
+    def test_non_index_failure_never_triggers_a_sync(self):
+        from routers.upload import _auto_import_missing_deps
+
+        with patch("services.importer.import_one",
+                   return_value={"status": "error", "name": "broken", "message": "Erreur réseau"}), \
+             patch.object(_upload_mod, "_sync_index_for_distribution") as mock_sync, \
+             patch.object(_upload_mod, "_sub_missing_deps", return_value=[]):
+            results = asyncio.run(_auto_import_missing_deps(["broken"], "jammy", "admin", "nmap"))
+
+        mock_sync.assert_not_called()
+        assert results[0]["status"] == "error"
 
 
 class TestAutoImportMissingDepsTransitive:
