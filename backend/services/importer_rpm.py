@@ -224,6 +224,8 @@ def import_one(pkg_row: dict, distribution: str, user: str, group: str | None = 
         pool_path = POOL_DIR / rpm_path.name
         shutil.copy2(str(rpm_path), str(pool_path))
 
+        cve_status = validation.cve_status  # "approved" | "pending_review" | "blocked"
+
         manifest = generate_manifest(
             str(pool_path),
             imported_by=user,
@@ -233,8 +235,16 @@ def import_one(pkg_row: dict, distribution: str, user: str, group: str | None = 
             cve_results=validation.cve_results or None,
             distribution=distribution,
         )
+        manifest["status"] = "pending_review" if cve_status == "pending_review" else "validated"
         save_manifest(manifest)
         add_to_index(manifest)
+
+        if cve_status == "pending_review":
+            audit_log("IMPORT", user, "PENDING_REVIEW",
+                      package=manifest["name"], version=manifest["version"],
+                      detail="En attente de révision RSSI — non publié dans RPM")
+            return {"status": "pending_review", "name": manifest["name"], "version": manifest["version"],
+                    "message": "en attente révision RSSI (non publié)", "steps": validation.steps}
 
         # Ajout au dépôt RPM via add-rpm.sh
         r = subprocess.run(
@@ -298,6 +308,7 @@ def import_package(
 
     group_files = []
     not_indexed: list[str] = []   # absents de l'index → warning, pas erreur
+    pending_review: list[dict] = []
 
     for pkg_name in packages_to_get:
         result = import_one({"name": pkg_name}, distribution, current_user)
@@ -306,6 +317,8 @@ def import_package(
             not_indexed.append(pkg_name)
         elif status in ("error", "blocked"):
             errors.append({"name": pkg_name, "error": result["message"], "steps": result.get("steps", [])})
+        elif status == "pending_review":
+            pending_review.append({"name": result["name"], "version": result["version"]})
         else:  # added
             group_files.append({
                 "filename":   result["filename"],
@@ -337,10 +350,12 @@ def import_package(
         "imported":     len(results),
         "errors":       len(errors),
         "not_indexed":  len(not_indexed),
+        "pending_review": len(pending_review),
         "unresolved":   deps_info.get("unresolved", []),
         "results":      results,
         "error_details":    errors,
         "not_indexed_details": not_indexed,
+        "pending_review_details": pending_review,
     }
 
 
@@ -412,6 +427,12 @@ def import_package_stream(
             "success"
         )
 
+    for item in result.get("pending_review_details", []):
+        yield emit(
+            f"  ⏳ {item['name']} {item['version']} — "
+            "en attente révision RSSI (non publié)", "warning"
+        )
+
     # Deps absentes de l'index → warning (probablement fournies par le repo système)
     for pkg_name in result.get("not_indexed_details", []):
         yield emit(
@@ -427,11 +448,14 @@ def import_package_stream(
     n_imported    = result.get("imported", 0)
     n_not_indexed = result.get("not_indexed", 0)
     n_errors      = result.get("errors", 0)
+    n_pending     = result.get("pending_review", 0)
     n_skipped     = len(already_in)
 
     yield emit("─" * 50)
 
     summary_parts = [f"{n_imported} ajouté(s)"]
+    if n_pending:
+        summary_parts.append(f"{n_pending} en attente révision RSSI")
     if n_skipped:
         summary_parts.append(f"{n_skipped} déjà présent(s)")
     if n_not_indexed:

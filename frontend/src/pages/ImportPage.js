@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
   searchImportPackages,
@@ -46,6 +47,43 @@ function LogLine({ line }) {
     <p className={`text-xs font-mono leading-relaxed ${styles[level] || "text-gray-300"}`}>
       {msg}
     </p>
+  );
+}
+
+function IconArrowRight({ className = "w-3.5 h-3.5" }) {
+  return <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3"/></svg>;
+}
+
+// Les trois importeurs (APT/RPM/APK) émettent le même vocabulaire de log SSE
+// pour ces deux issues — voir services/importer_{apt,rpm,apk}.py:import_one().
+// "[ADD] ..." = publié dans le dépôt ; "en attente révision RSSI" = envoyé en
+// révision CVE, pas encore publié (routers/decision_router.py).
+function summarizeImportOutcome(logs) {
+  const hasPending   = logs.some((l) => l.includes("en attente révision RSSI"));
+  const hasPublished = logs.some((l) => l.includes("[ADD]"));
+  if (hasPending) return "pending_review";
+  if (hasPublished) return "published";
+  return null;
+}
+
+function ImportOutcomeButton({ logs, done }) {
+  const navigate = useNavigate();
+  if (!done) return null;
+  const outcome = summarizeImportOutcome(logs);
+  if (!outcome) return null;
+  const isPending = outcome === "pending_review";
+  return (
+    <button
+      type="button"
+      onClick={() => navigate(isPending ? "/security" : "/packages")}
+      className={`inline-flex items-center gap-1.5 text-xs font-semibold rounded-lg px-3 py-2 border transition-colors mt-3
+        ${isPending
+          ? "bg-white text-amber-700 border-amber-200 hover:bg-amber-50"
+          : "bg-white text-emerald-700 border-emerald-200 hover:bg-emerald-50"}`}
+    >
+      {isPending ? "Voir dans Décisions CVE" : "Voir dans Paquets"}
+      <IconArrowRight />
+    </button>
   );
 }
 
@@ -417,6 +455,7 @@ function SearchImportTab() {
               <div ref={logsRef} className="max-h-48 overflow-y-auto space-y-0.5">
                 {logs.map((line, i) => <LogLine key={i} line={line} />)}
               </div>
+              <ImportOutcomeButton logs={logs} done={done} />
             </div>
           )}
         </div>
@@ -535,6 +574,7 @@ function BatchImportTab() {
           <div ref={logsRef} className="max-h-80 overflow-y-auto space-y-0.5">
             {logs.map((line, i) => <LogLine key={i} line={line} />)}
           </div>
+          <ImportOutcomeButton logs={logs} done={done} />
         </div>
       )}
     </div>

@@ -235,6 +235,8 @@ def import_one(pkg_row: dict, distribution: str, user: str, group: str | None = 
         pool_path = POOL_DIR / apk_path.name
         shutil.copy2(str(apk_path), str(pool_path))
 
+        cve_status = validation.cve_status  # "approved" | "pending_review" | "blocked"
+
         manifest = generate_manifest(
             str(pool_path),
             imported_by=user,
@@ -242,8 +244,16 @@ def import_one(pkg_row: dict, distribution: str, user: str, group: str | None = 
             cve_results=validation.cve_results or None,
             distribution=distribution,
         )
+        manifest["status"] = "pending_review" if cve_status == "pending_review" else "validated"
         save_manifest(manifest)
         add_to_index(manifest)
+
+        if cve_status == "pending_review":
+            audit_log("IMPORT", user, "PENDING_REVIEW",
+                      package=manifest["name"], version=manifest.get("version"),
+                      detail="En attente de révision RSSI — non publié dans APK")
+            return {"status": "pending_review", "name": manifest["name"], "version": manifest.get("version"),
+                    "message": "en attente révision RSSI (non publié)", "steps": validation.steps}
 
         ok, repo_msg = apk_add_package(pool_path, distribution)
         audit_log(
@@ -302,6 +312,7 @@ def import_package_stream(
         skipped     = 0
         failed      = 0
         not_indexed = 0
+        pending     = 0
 
         for pkg_name in to_import:
             # Vérifier si déjà dans le pool
@@ -348,6 +359,12 @@ def import_package_stream(
             elif status in ("error", "blocked"):
                 yield _emit(f"  [REJECT] {pkg_name} — {result['message']}", "error")
                 failed += 1
+            elif status == "pending_review":
+                yield _emit(
+                    f"  ⏳ {result['name']} {result.get('version', '')} — "
+                    "en attente révision RSSI (non publié)", "warning"
+                )
+                pending += 1
             else:  # added
                 if result.get("warning"):
                     yield _emit(f"  [WARN] {pkg_name} importe mais erreur repo : {result['message']}", "warning")
@@ -364,6 +381,8 @@ def import_package_stream(
         summary_level = "success" if not failed else "warning"
 
         parts = [f"{added} ajoute(s)"]
+        if pending:
+            parts.append(f"{pending} en attente révision RSSI")
         if skipped:
             parts.append(f"{skipped} deja present(s)")
         if not_indexed:

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useDropzone } from "react-dropzone";
+import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import { getDistributions } from "../api";
 
@@ -40,6 +41,9 @@ function IconIndex({ className = "w-4 h-4" }) {
 }
 function IconServer({ className = "w-4 h-4" }) {
   return <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M21.75 17.25v.75a2.25 2.25 0 01-2.25 2.25H4.5a2.25 2.25 0 01-2.25-2.25v-.75m19.5 0a2.25 2.25 0 00-2.25-2.25H4.5a2.25 2.25 0 00-2.25 2.25m19.5 0v-13.5a2.25 2.25 0 00-2.25-2.25H4.5A2.25 2.25 0 002.25 3.75v13.5"/></svg>;
+}
+function IconArrowRight({ className = "w-4 h-4" }) {
+  return <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3"/></svg>;
 }
 
 const STEP_META = {
@@ -113,11 +117,15 @@ function WorkflowStep({ step }) {
 }
 
 function ResultBanner({ result }) {
+  const navigate = useNavigate();
   const isAccepted  = result.status === "accepted";
   const isPending   = result.status === "pending_review";
   const isDuplicate = result.status === "already_imported";
   const isConflict  = result.status === "conflict";
   const isMismatch  = result.status === "format_mismatch";
+  // Publié dans le dépôt (accepted) ou déjà présent (already_imported) → visible dans Paquets.
+  // En attente de révision RSSI → pas encore publié, visible uniquement dans Décisions CVE.
+  const isPublished = isAccepted || isDuplicate;
 
   const bg    = isAccepted  ? "bg-emerald-50 border-emerald-200"
               : isPending   ? "bg-amber-50 border-amber-200"
@@ -180,6 +188,19 @@ function ResultBanner({ result }) {
       )}
       {result.distribution && (
         <p className="text-xs text-gray-500">Distribution : <strong className="font-medium">{result.distribution}</strong></p>
+      )}
+      {(isPublished || isPending) && (
+        <button
+          type="button"
+          onClick={() => navigate(isPublished ? "/packages" : "/security")}
+          className={`inline-flex items-center gap-1.5 text-xs font-semibold rounded-lg px-3 py-2 border transition-colors
+            ${isPublished
+              ? "bg-white text-emerald-700 border-emerald-200 hover:bg-emerald-50"
+              : "bg-white text-amber-700 border-amber-200 hover:bg-amber-50"}`}
+        >
+          {isPublished ? "Voir dans Paquets" : "Voir dans Décisions CVE"}
+          <IconArrowRight className="w-3.5 h-3.5" />
+        </button>
       )}
     </div>
   );
