@@ -1,7 +1,25 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import toast from "react-hot-toast";
-import { listArtifacts, deleteArtifact, syncIndex, getArtifact, resolveDependencies, getApiBaseUrl, getPackageCve, getPackageDecision, getAuditLogs, getDistributions } from "../api";
+import { listArtifacts, deleteArtifact, syncIndex, getArtifact, resolveDependencies, getApiBaseUrl, getPackageCve, getPackageDecision, getAuditLogs, getDistributions, getImportSyncStatus } from "../api";
 import Paginator from "./Paginator";
+import { useSyncJobs } from "../context/SyncJobContext";
+
+// Seuil de fraîcheur de l'index externe (paquets/dépendances importables) : au-delà, on
+// propose une synchro (bandeau discret) plutôt que de la relancer à chaque visite de la
+// page — un cycle du cron quotidien (`security_sync_daily`) suffit à couvrir ce délai.
+const SYNC_STALE_THRESHOLD_HOURS = 24;
+
+function hoursSinceSync(iso) {
+  if (!iso) return Infinity;
+  return (Date.now() - new Date(iso).getTime()) / 3_600_000;
+}
+
+function formatStaleness(hours) {
+  if (!isFinite(hours)) return "jamais synchronisé";
+  const days = Math.floor(hours / 24);
+  if (days >= 1) return `depuis ${days} jour${days > 1 ? "s" : ""}`;
+  return `depuis ${Math.max(1, Math.floor(hours))} heure${Math.floor(hours) > 1 ? "s" : ""}`;
+}
 
 const REPO_URL     = import.meta.env.REACT_APP_REPO_URL     || "http://localhost:80";
 const API_URL      = getApiBaseUrl();
@@ -731,6 +749,8 @@ export default function PackageList() {
   const [resolving, setResolving]         = useState(null);
   const [checkedKeys, setChecked]         = useState(new Set()); // suppression multiple — clé pkg.name
   const [bulkDeleting, setBulkDeleting]   = useState(false);
+  const [syncSources, setSyncSources]     = useState([]);
+  const { startSync, isRunning, jobs, activeCount } = useSyncJobs();
 
   // Charge les distributions depuis l'API pour construire les onglets de filtre
   useEffect(() => {
@@ -772,6 +792,35 @@ export default function PackageList() {
   }, [page, filter, distribFilter]);
 
   useEffect(() => { fetchPackages(); }, [fetchPackages]);
+
+  // Statut de fraîcheur de l'index externe — rechargé au montage puis à chaque fin de job
+  // de synchro (pas de polling dédié : useSyncJobs() poll déjà globalement).
+  const loadSyncStatus = useCallback(() => {
+    getImportSyncStatus()
+      .then((data) => setSyncSources(data.sources || []))
+      .catch(() => { /* bandeau simplement absent si le statut est indisponible */ });
+  }, []);
+
+  useEffect(() => { loadSyncStatus(); }, [loadSyncStatus]);
+
+  useEffect(() => {
+    const hadActive = jobs.some((j) => j.status === "running");
+    if (!hadActive && activeCount === 0) loadSyncStatus();
+  }, [activeCount]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const oldestSyncHours = syncSources.length > 0
+    ? Math.max(...syncSources.map((s) => hoursSinceSync(s.last_sync)))
+    : 0;
+  const indexStale = syncSources.length > 0 && oldestSyncHours > SYNC_STALE_THRESHOLD_HOURS;
+
+  const handleFreshnessSync = async () => {
+    try {
+      await startSync("all");
+      toast.success("Synchronisation de l'index lancée");
+    } catch {
+      toast.error("Impossible de démarrer la synchronisation");
+    }
+  };
 
   const handleDistribChange = (id) => {
     setDistribFilter(id);
@@ -896,6 +945,26 @@ export default function PackageList() {
             {syncing ? "Sync..." : "Sync index"}
           </button>
         </div>
+
+        {indexStale && (
+          <div className="flex items-center justify-between gap-3 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-lg">
+            <div className="flex items-center gap-2 text-xs text-amber-800">
+              <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M12 9v3.75m0 3.75h.008v.008H12v-.008zM10.29 3.86L1.82 18a1.5 1.5 0 001.29 2.25h17.78a1.5 1.5 0 001.29-2.25L13.71 3.86a1.5 1.5 0 00-2.42 0z" />
+              </svg>
+              <span>
+                Index de paquets externes non synchronisé {formatStaleness(oldestSyncHours)} — une dépendance
+                récemment publiée pourrait être introuvable lors d'un import.
+              </span>
+            </div>
+            <button onClick={handleFreshnessSync} disabled={isRunning("all")}
+              className="flex-shrink-0 px-2.5 py-1.5 bg-amber-600 text-white text-xs font-medium rounded-md
+                         hover:bg-amber-700 disabled:opacity-50 transition-colors">
+              {isRunning("all") ? "Synchronisation..." : "Synchroniser"}
+            </button>
+          </div>
+        )}
 
         <div className="relative">
           <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"

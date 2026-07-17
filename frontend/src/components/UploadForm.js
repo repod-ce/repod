@@ -481,6 +481,14 @@ export default function UploadForm() {
           <div className="p-3 space-y-1.5">
             {steps.map((step, i) => <WorkflowStep key={step.name || i} step={step} />)}
           </div>
+          {uploading && steps.some((s) => s.name === "auto_deps") && (
+            <div className="mx-3 mb-3 flex items-center gap-2.5 px-3 py-2.5 bg-blue-50 border border-blue-200 rounded-lg">
+              <div className="w-3.5 h-3.5 rounded-full border-2 border-blue-500 border-t-transparent animate-spin flex-shrink-0" />
+              <p className="text-xs text-blue-700">
+                <span className="font-semibold">Résolution des dépendances en cours</span> — ne quittez pas cette page, le traitement peut prendre un moment (synchronisation de l'index si nécessaire).
+              </p>
+            </div>
+          )}
           {result && <div className="px-3 pb-3"><ResultBanner result={result} /></div>}
         </div>
       )}
