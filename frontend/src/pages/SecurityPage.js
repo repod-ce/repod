@@ -1625,6 +1625,8 @@ function CvePostureSection({ onDecideRequest }) {
   const [selectedPkg, setSelected] = useState(null);
   const [actionLoading, setActL]   = useState(null);
   const [confirmPkg, setConfirm]   = useState(null);  // quarantine confirm
+  const [checkedKeys, setChecked]  = useState(new Set()); // suppression multiple — clé "name@version"
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   // Filtres
   const [sevFilter, setSev]        = useState("all");  // all|critical|high|medium|low|unscanned
   const [kevFilter, setKev]        = useState(false);
@@ -1675,6 +1677,50 @@ function CvePostureSection({ onDecideRequest }) {
       loadPosture();
     } catch (e) { toast.error(e.response?.data?.detail || "Erreur suppression"); }
     finally { setActL(null); }
+  };
+
+  const toggleChecked = (pkey) => {
+    setChecked((prev) => {
+      const next = new Set(prev);
+      if (next.has(pkey)) next.delete(pkey); else next.add(pkey);
+      return next;
+    });
+  };
+
+  const toggleCheckAll = (pkgsOnPage) => {
+    const pageKeys = pkgsOnPage.map((p) => `${p.name}@${p.version}`);
+    const allChecked = pageKeys.every((k) => checkedKeys.has(k));
+    setChecked((prev) => {
+      const next = new Set(prev);
+      pageKeys.forEach((k) => (allChecked ? next.delete(k) : next.add(k)));
+      return next;
+    });
+  };
+
+  const handleBulkDelete = async (checkedPkgs) => {
+    if (checkedPkgs.length === 0) return;
+    if (!window.confirm(
+      `Supprimer définitivement ${checkedPkgs.length} paquet${checkedPkgs.length > 1 ? "s" : ""} du dépôt ?`
+    )) return;
+    setBulkDeleting(true);
+    let ok = 0;
+    const failed = [];
+    for (const pkg of checkedPkgs) {
+      try {
+        await deleteArtifact(pkg.name, pkg.version);
+        ok++;
+      } catch (e) {
+        failed.push(`${pkg.name} ${pkg.version}`);
+      }
+    }
+    setBulkDeleting(false);
+    setChecked(new Set());
+    if (failed.length === 0) {
+      toast.success(`${ok} paquet${ok > 1 ? "s" : ""} supprimé${ok > 1 ? "s" : ""}`);
+    } else {
+      toast.error(`${ok} supprimé(s), ${failed.length} échec(s) : ${failed.join(", ")}`);
+    }
+    loadPosture();
   };
 
   if (loading) return <div className="bg-white border border-gray-200 rounded-xl p-8 text-center text-gray-400 text-sm">Chargement de la posture CVE...</div>;
@@ -1868,6 +1914,28 @@ function CvePostureSection({ onDecideRequest }) {
           </div>
         </div>
 
+        {/* ── Barre d'action groupée (suppression multiple) ── */}
+        {checkedKeys.size > 0 && (
+          <div className="flex items-center justify-between px-6 py-2.5 bg-red-50 border-y border-red-100">
+            <span className="text-xs font-medium text-red-700">
+              {checkedKeys.size} paquet{checkedKeys.size > 1 ? "s" : ""} sélectionné{checkedKeys.size > 1 ? "s" : ""}
+            </span>
+            <div className="flex items-center gap-2">
+              <button onClick={() => setChecked(new Set())} className="text-xs text-gray-500 hover:text-gray-700 px-2 py-1">
+                Désélectionner
+              </button>
+              <button
+                onClick={() => handleBulkDelete(visible.filter((p) => checkedKeys.has(`${p.name}@${p.version}`)))}
+                disabled={bulkDeleting}
+                className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-red-600 hover:bg-red-700 disabled:opacity-40 px-3 py-1.5 rounded-lg transition-colors"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                {bulkDeleting ? "Suppression..." : `Supprimer (${checkedKeys.size})`}
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* ── Table ── */}
         {visible.length === 0 ? (
           <div className="p-10 text-center text-gray-400 text-sm">
@@ -1878,6 +1946,15 @@ function CvePostureSection({ onDecideRequest }) {
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-100">
                 <tr>
+                  <th className="px-4 py-3 w-8">
+                    <input
+                      type="checkbox"
+                      className="rounded border-gray-300 text-red-600 focus:ring-red-200"
+                      checked={pageItems.length > 0 && pageItems.every((p) => checkedKeys.has(`${p.name}@${p.version}`))}
+                      onChange={() => toggleCheckAll(pageItems)}
+                      title="Sélectionner tout (page courante)"
+                    />
+                  </th>
                   {[
                     { label: "Paquet / Version",     w: "w-48" },
                     { label: "Distrib.",              w: "w-24" },
@@ -1907,6 +1984,16 @@ function CvePostureSection({ onDecideRequest }) {
 
                   return (
                     <tr key={pkey} className={`transition-colors ${rowBg}`}>
+
+                      {/* Sélection (suppression multiple) */}
+                      <td className="px-4 py-3">
+                        <input
+                          type="checkbox"
+                          className="rounded border-gray-300 text-red-600 focus:ring-red-200"
+                          checked={checkedKeys.has(pkey)}
+                          onChange={() => toggleChecked(pkey)}
+                        />
+                      </td>
 
                       {/* Paquet */}
                       <td className="px-4 py-3">

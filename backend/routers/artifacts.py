@@ -47,7 +47,7 @@ from services.indexer import (
     remove_from_index,
     sync_index_from_pool,
 )
-from services.manifest import list_manifests, load_manifest
+from services.manifest import delete_manifest_from_db, list_manifests, load_manifest
 from services.pagination import paginate
 from services.path_safety import safe_path_join_http
 from services.pending_promotions import get_pending, list_pending
@@ -277,9 +277,12 @@ def delete_artifact(name: str, current_user: str = Depends(get_maintainer_user))
     for pkg_file in POOL_DIR.glob(f"{name}{_sep}*{_pkg_ext}"):
         pkg_file.unlink(missing_ok=True)
 
-    # Supprimer les manifests
-    for mf in MANIFEST_DIR.glob(f"{name}_*.manifest.json"):
-        mf.unlink(missing_ok=True)
+    # Supprimer les manifests — PostgreSQL (source de vérité lue par
+    # list_manifests()/packages-posture) ET les fichiers JSON legacy.
+    # L'ancien code ne supprimait que les fichiers JSON via un glob
+    # manuel, jamais la ligne PostgreSQL : le paquet "supprimé"
+    # continuait donc d'apparaître dans l'UI indéfiniment.
+    delete_manifest_from_db(name)
 
     # Mettre à jour l'index
     remove_from_index(name)
@@ -314,10 +317,12 @@ def delete_artifact_version(
     pkg_path = safe_path_join_http(POOL_DIR, filename)
     pkg_path.unlink(missing_ok=True)
 
-    # Supprimer le manifest
-    version_safe = version.replace(":", "_").replace("/", "_")
-    manifest_path = safe_path_join_http(MANIFEST_DIR, f"{name}_{version_safe}_{arch}.manifest.json")
-    manifest_path.unlink(missing_ok=True)
+    # Supprimer le manifest — PostgreSQL (source de vérité) ET le fichier
+    # JSON legacy. Même bug que delete_artifact() ci-dessus : un unlink()
+    # manuel du seul fichier JSON laissait la ligne PostgreSQL intacte,
+    # donc le paquet réapparaissait toujours dans list_manifests()/
+    # packages-posture après une suppression "réussie".
+    delete_manifest_from_db(name, version, arch)
 
     remove_from_index(name, version)
     audit_log("DELETE", current_user, "SUCCESS", package=name, version=version)
