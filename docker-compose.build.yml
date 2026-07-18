@@ -1,0 +1,32 @@
+##
+## Repod — Overlay "build from source"
+##
+## Par défaut, docker-compose.yaml tire des images pré-construites depuis
+## ghcr.io/repod-ce/*. Pour les contributeurs qui veulent compiler
+## les images depuis les sources locales (backend/, frontend/, Dockerfile,
+## Dockerfile.rpm-nginx) plutôt que de les tirer du registre :
+##
+##   docker compose -f docker-compose.yaml -f docker-compose.build.yml up -d --build
+##
+
+services:
+  rpm-repo:
+    build:
+      context: .
+      dockerfile: Dockerfile.rpm-nginx
+
+  apt-repo:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+  backend:
+    build: ./backend
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        REACT_APP_API_URL: ${REACT_APP_API_URL-}
+        REACT_APP_REPO_URL: ${REACT_APP_REPO_URL-http://localhost:80}
+        REACT_APP_RPM_REPO_URL: ${REACT_APP_RPM_REPO_URL-http://localhost:8080}

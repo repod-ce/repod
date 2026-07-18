@@ -1,0 +1,78 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# GitHub Actions — Security gate : bloquer la PR/déploiement si CVE critique
+# ─────────────────────────────────────────────────────────────────────────────
+# Ce workflow interroge l'API repod pour détecter des vulnérabilités critiques.
+# Il bloque la PR ou la planification si au moins une CVE critique est trouvée.
+#
+# Secrets requis : REPOD_URL, REPOD_USERNAME, REPOD_PASSWORD
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: Security gate (repod)
+
+on:
+  pull_request:
+    branches: [main, master, develop]
+  schedule:
+    - cron: '0 7 * * *'   # Tous les jours à 07h00 UTC
+  workflow_dispatch:
+
+jobs:
+  security-check:
+    name: Check vulnerabilities
+    runs-on: ubuntu-latest
+    steps:
+      # ── Authentification ────────────────────────────────────────────────────
+      - name: Login to repod
+        id: login
+        run: |
+          RESPONSE=$(curl -sf -X POST \
+            --data-urlencode "username=${{ secrets.REPOD_USERNAME }}" \
+            --data-urlencode "password=${{ secrets.REPOD_PASSWORD }}" \
+            "${{ secrets.REPOD_URL }}/api/v1/auth/token")
+          TOKEN=$(echo "$RESPONSE" | jq -r '.access_token')
+          echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
+
+      # ── Récupération des vulnérabilités ─────────────────────────────────────
+      - name: Fetch vulnerabilities from repod
+        id: vulns
+        run: |
+          RESPONSE=$(curl -sf \
+            -H "Authorization: Bearer ${{ steps.login.outputs.token }}" \
+            "${{ secrets.REPOD_URL }}/api/v1/security/vulnerabilities?per_page=200")
+
+          # Nombre par sévérité
+          CRITICAL=$(echo "$RESPONSE" | jq '[.vulnerabilities.items[] | select(.severity == "Critical")] | length')
+          HIGH=$(echo "$RESPONSE"     | jq '[.vulnerabilities.items[] | select(.severity == "High")]     | length')
+          MEDIUM=$(echo "$RESPONSE"   | jq '[.vulnerabilities.items[] | select(.severity == "Medium")]   | length')
+          TOTAL=$(echo "$RESPONSE"    | jq '.vulnerabilities.total // 0')
+
+          echo "critical=$CRITICAL" >> "$GITHUB_OUTPUT"
+          echo "high=$HIGH"         >> "$GITHUB_OUTPUT"
+          echo "medium=$MEDIUM"     >> "$GITHUB_OUTPUT"
+          echo "total=$TOTAL"       >> "$GITHUB_OUTPUT"
+
+          echo "### 🔍 Vulnérabilités repod" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Sévérité | Nombre |"        >> "$GITHUB_STEP_SUMMARY"
+          echo "|----------|--------|"        >> "$GITHUB_STEP_SUMMARY"
+          echo "| Critical | $CRITICAL |"    >> "$GITHUB_STEP_SUMMARY"
+          echo "| High     | $HIGH |"        >> "$GITHUB_STEP_SUMMARY"
+          echo "| Medium   | $MEDIUM |"      >> "$GITHUB_STEP_SUMMARY"
+          echo "| Total    | $TOTAL |"       >> "$GITHUB_STEP_SUMMARY"
+
+      # ── Blocage sur CVE critique ────────────────────────────────────────────
+      - name: Fail on critical vulnerabilities
+        run: |
+          CRITICAL="${{ steps.vulns.outputs.critical }}"
+          HIGH="${{ steps.vulns.outputs.high }}"
+
+          if [ "$CRITICAL" -gt 0 ]; then
+            echo "::error::🔴 $CRITICAL vulnérabilité(s) CRITIQUE(s) détectée(s) dans repod."
+            echo "::error::Corrigez les CVE critiques avant de fusionner ou déployer."
+            exit 1
+          fi
+
+          if [ "$HIGH" -gt 20 ]; then
+            echo "::warning::🟡 $HIGH vulnérabilités HIGH — revue recommandée avant déploiement."
+          fi
+
+          echo "✅ Aucune vulnérabilité critique. Pipeline autorisé."

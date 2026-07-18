@@ -1,0 +1,48 @@
+[run]
+source = .
+omit =
+    # Externe / infrastructure réseau (scan réseau)
+    services/scan_manager.py
+    services/inventory_cve.py
+    services/package_index.py
+    services/security_sync.py
+    services/search.py
+    # services/ssh_scanner.py et services/inventory.py sont désormais couverts
+    # (sprint coverage SSH/auth/install).
+    # Pipeline APT (subprocess intense, dépendances externes)
+    services/importer.py
+    # CVE / enrichissement externe (API EPSS, KEV CISA)
+    services/cve_enrichment.py
+    # Statistiques de téléchargement (non critiques)
+    services/download_stats.py
+    # Alertes SLA (scheduler, pas de tests unitaires possibles)
+    services/sla_alerts.py
+    # Validation pipeline (subprocess ClamAV + Grype + socket clamd)
+    services/validator.py
+    # Fabrique d'application FastAPI
+    main.py
+    # routers/upload.py et routers/security_router.py sont maintenant couverts
+    # par tests/test_router_integration.py (tâche "long terme" — couverture).
+    # Routeurs complexes (distribution, inventaire, agent, SBOM)
+    routers/import_router.py
+    routers/distributions_router.py
+    routers/inventory_router.py
+    routers/agent_router.py
+    routers/webhook_router.py
+    # Petits routeurs sans tests dédiés
+    routers/downloads_router.py
+    routers/license_router.py
+    routers/packages.py
+    routers/__init__.py
+    # auth/router.py, auth/models.py et auth/reset_tokens.py sont désormais
+    # couverts (sprint coverage SSH/auth/install).
+    # Tests eux-mêmes
+    tests/*
+
+[report]
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    if __name__ == .__main__.:
+    raise NotImplementedError
+    \.\.\.

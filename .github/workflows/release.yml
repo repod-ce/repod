@@ -1,0 +1,246 @@
+name: Release
+
+# Build & push Docker images on every push to main (→ `latest`), and create a
+# GitHub Release + CHANGELOG entry on semantic version tags (v1.2.3).
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+
+permissions:
+  contents: write    # pour créer la GitHub Release et pousser le CHANGELOG
+  packages: write    # pour pousser sur ghcr.io
+
+env:
+  IMAGE_NAMESPACE: ghcr.io/repod-ce
+
+jobs:
+  # ──────────────────────────────────────────────────────────────────────────
+  # Job 1 — Build & push des images Docker vers ghcr.io
+  # ──────────────────────────────────────────────────────────────────────────
+  build-push:
+    name: Build & Push — Docker → ghcr.io
+    runs-on: ubuntu-latest
+
+    outputs:
+      version: ${{ steps.meta-backend.outputs.version }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # nécessaire pour git log dans le changelog
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── Métadonnées image backend ─────────────────────────────────────────
+      - name: Extract metadata — backend
+        id: meta-backend
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAMESPACE }}/backend
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      # ── Build & push backend ──────────────────────────────────────────────
+      - name: Build and push — backend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          push: true
+          tags: ${{ steps.meta-backend.outputs.tags }}
+          labels: ${{ steps.meta-backend.outputs.labels }}
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+          build-args: |
+            VERSION=${{ github.ref_name }}
+
+      # ── Métadonnées image frontend ────────────────────────────────────────
+      - name: Extract metadata — frontend
+        id: meta-frontend
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAMESPACE }}/frontend
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      # ── Build & push frontend ─────────────────────────────────────────────
+      # REACT_APP_API_URL est laissé vide : le bundle utilise des chemins
+      # relatifs (/api/...) proxifiés par nginx vers backend-api, ce qui rend
+      # l'image portable sur n'importe quel hôte (voir frontend/nginx.conf).
+      - name: Build and push — frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          push: true
+          tags: ${{ steps.meta-frontend.outputs.tags }}
+          labels: ${{ steps.meta-frontend.outputs.labels }}
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
+          build-args: |
+            REACT_APP_API_URL=
+            REACT_APP_VERSION=${{ steps.meta-backend.outputs.version }}
+
+      # ── Métadonnées image apt-repo (nginx + reprepro) ─────────────────────
+      - name: Extract metadata — apt-repo
+        id: meta-apt
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAMESPACE }}/apt-repo
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      # ── Build & push apt-repo ─────────────────────────────────────────────
+      - name: Build and push — apt-repo
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          tags: ${{ steps.meta-apt.outputs.tags }}
+          labels: ${{ steps.meta-apt.outputs.labels }}
+          cache-from: type=gha,scope=apt-repo
+          cache-to: type=gha,mode=max,scope=apt-repo
+
+      # ── Métadonnées image rpm-nginx (dépôt RPM) ───────────────────────────
+      - name: Extract metadata — rpm-nginx
+        id: meta-rpm
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAMESPACE }}/rpm-nginx
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      # ── Build & push rpm-nginx ────────────────────────────────────────────
+      - name: Build and push — rpm-nginx
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.rpm-nginx
+          push: true
+          tags: ${{ steps.meta-rpm.outputs.tags }}
+          labels: ${{ steps.meta-rpm.outputs.labels }}
+          cache-from: type=gha,scope=rpm-nginx
+          cache-to: type=gha,mode=max,scope=rpm-nginx
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Job 2 — Génération du CHANGELOG et création de la GitHub Release
+  #          (uniquement sur les tags sémantiques v1.2.3)
+  # ──────────────────────────────────────────────────────────────────────────
+  changelog:
+    name: Changelog & GitHub Release
+    runs-on: ubuntu-latest
+    needs: build-push
+    if: startsWith(github.ref, 'refs/tags/')
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine previous tag
+        id: prev-tag
+        run: |
+          PREV=$(git tag --sort=-version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
+                 | sed -n '2p')
+          echo "prev=${PREV:-}" >> "$GITHUB_OUTPUT"
+
+      - name: Generate release notes from commits
+        id: notes
+        run: |
+          VERSION="${{ github.ref_name }}"
+          PREV="${{ steps.prev-tag.outputs.prev }}"
+
+          echo "## ${VERSION} — $(date +'%Y-%m-%d')" > release_notes.md
+          echo "" >> release_notes.md
+
+          if [ -n "$PREV" ]; then
+            RANGE="${PREV}..HEAD"
+            echo "Changes since \`${PREV}\`:" >> release_notes.md
+          else
+            RANGE="HEAD"
+            echo "Initial release:" >> release_notes.md
+          fi
+
+          echo "" >> release_notes.md
+
+          # Conventional commits → sections
+          for TYPE in "feat" "fix" "perf" "refactor" "docs" "chore"; do
+            COMMITS=$(git log "$RANGE" --oneline --no-merges \
+                      --format="- %s (%h)" \
+                      | grep -E "^- ${TYPE}(\(.+\))?:" || true)
+            if [ -n "$COMMITS" ]; then
+              case "$TYPE" in
+                feat)     echo "### ✨ Nouvelles fonctionnalités" >> release_notes.md ;;
+                fix)      echo "### 🐛 Corrections" >> release_notes.md ;;
+                perf)     echo "### ⚡ Performances" >> release_notes.md ;;
+                refactor) echo "### ♻️ Refactoring" >> release_notes.md ;;
+                docs)     echo "### 📚 Documentation" >> release_notes.md ;;
+                chore)    echo "### 🔧 Maintenance" >> release_notes.md ;;
+              esac
+              echo "$COMMITS" >> release_notes.md
+              echo "" >> release_notes.md
+            fi
+          done
+
+          # Commits sans préfixe conventionnel
+          OTHERS=$(git log "$RANGE" --oneline --no-merges --format="- %s (%h)" \
+                   | grep -vE "^- (feat|fix|perf|refactor|docs|chore)(\(.+\))?:" || true)
+          if [ -n "$OTHERS" ]; then
+            echo "### 📝 Autres changements" >> release_notes.md
+            echo "$OTHERS" >> release_notes.md
+            echo "" >> release_notes.md
+          fi
+
+          echo "" >> release_notes.md
+          echo "### 🐳 Images Docker" >> release_notes.md
+          echo "- \`${{ env.IMAGE_NAMESPACE }}/backend:${{ needs.build-push.outputs.version }}\`" >> release_notes.md
+          echo "- \`${{ env.IMAGE_NAMESPACE }}/frontend:${{ needs.build-push.outputs.version }}\`" >> release_notes.md
+          echo "- \`${{ env.IMAGE_NAMESPACE }}/apt-repo:${{ needs.build-push.outputs.version }}\`" >> release_notes.md
+          echo "- \`${{ env.IMAGE_NAMESPACE }}/rpm-nginx:${{ needs.build-push.outputs.version }}\`" >> release_notes.md
+
+          cat release_notes.md
+
+      - name: Prepend to CHANGELOG.md
+        run: |
+          if [ -f CHANGELOG.md ]; then
+            # Insérer les nouvelles notes avant le contenu existant
+            cat release_notes.md CHANGELOG.md > CHANGELOG_NEW.md
+            mv CHANGELOG_NEW.md CHANGELOG.md
+          else
+            cp release_notes.md CHANGELOG.md
+          fi
+
+      - name: Commit & push CHANGELOG.md
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md
+          git diff --staged --quiet || \
+            git commit -m "docs: update CHANGELOG for ${{ github.ref_name }} [skip ci]"
+          git push origin HEAD:main || true  # non bloquant si branche protégée
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: release_notes.md
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          # Ex: v1.0.0-rc.1 → prerelease automatique

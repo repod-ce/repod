@@ -1,0 +1,12 @@
+# Liste d'exceptions Trivy pour l'image apt-repo (repod-apt-repo).
+#
+# Le scan Trivy (job security-docker) est BLOQUANT sur les CVE CRITICAL/HIGH
+# avec correctif disponible (ignore-unfixed: true).
+#
+# Si une CVE doit être temporairement acceptée (faux positif, correctif amont
+# pas encore disponible, risque jugé acceptable...), l'ajouter ci-dessous avec
+# un commentaire expliquant la justification, qui a validé, et la date de
+# revue prévue.
+#
+# Exemple :
+# CVE-2024-XXXXX  # faux positif jq statique non utilisé — revue 2026-09-01
