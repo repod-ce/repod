@@ -56,15 +56,23 @@ def _get_source_base_url(source_url: str) -> str:
     return source_url.split("/dists/")[0]
 
 
-def _download_deb(pkg_name: str, tmp_dir: str) -> tuple[Path | None, str, str | None]:
+def _download_deb(pkg_name: str, tmp_dir: str, distro: str | None = None) -> tuple[Path | None, str, str | None]:
     """
     Télécharge un .deb depuis l'index SQLite local.
+    Si `distro` est fourni (ex: "jammy"), privilégie la ligne indexée pour
+    cette distribution précise (via get_package_info_for_distro) — sans
+    cela, un nom présent sous plusieurs distros (jammy/noble/focal/...)
+    retombe sur un SELECT ... LIMIT 1 sans ORDER BY, non déterministe.
+    Fallback sur get_package_info(name) si `distro` est absent ou sans
+    correspondance, même comportement qu'avant pour les appelants qui ne le
+    passent pas encore (compat ascendante).
     Retourne (chemin_fichier, source_label, sha256_attendu) ou (None, message_erreur, None).
     """
     from services.package_index import DEFAULT_SOURCES
     from services.package_index import get_package_info as index_get_info
+    from services.package_index import get_package_info_for_distro as index_get_info_for_distro
 
-    row = index_get_info(pkg_name)
+    row = index_get_info_for_distro(pkg_name, distro) if distro else index_get_info(pkg_name)
     if not row or not row.get("filename"):
         return None, f"'{pkg_name}' introuvable dans l'index — lancez une synchronisation", None
 
