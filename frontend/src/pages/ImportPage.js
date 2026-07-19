@@ -70,6 +70,39 @@ function summarizeImportOutcome(logs) {
   return null;
 }
 
+// Résultat par paquet, extrait des lignes de log SSE — voir
+// services/importer_apt.py:import_package_stream() pour le vocabulaire
+// exact ([ADD]/[FAIL]/⏳/⚠) que ces regex reconnaissent. Une entrée
+// "add"/"⏳" plus tardive écrase toujours un "[SKIP]" plus ancien pour le
+// même nom — utile si un paquet a d'abord été vu "déjà présent" puis
+// re-téléchargé après une resynchronisation automatique en cours d'import.
+function parseDependencyOutcomes(logs) {
+  const outcomes = {};
+  const patterns = [
+    { re: /\[ADD\]\s+(\S+)\s/,  status: "added" },
+    { re: /⏳\s+(\S+)\s/,       status: "pending_review" },
+    { re: /⚠\s+(\S+)\s+—/,     status: "added" },   // ajouté avec avertissement (ex: reprepro rc≠0)
+    { re: /\[FAIL\]\s+(\S+)\s+—/, status: "failed" },
+    { re: /\[SKIP\]\s+(\S+)\s+—/, status: "skipped" },
+  ];
+  for (const line of logs) {
+    const msg = line.split("|").slice(1).join("|");
+    for (const { re, status } of patterns) {
+      const m = msg.match(re);
+      if (m) { outcomes[m[1]] = status; break; }
+    }
+  }
+  return outcomes;
+}
+
+function DependencyBadge({ name, alreadyInRepo, outcome }) {
+  if (outcome === "added")           return <Badge color="green">Ajouté</Badge>;
+  if (outcome === "pending_review")  return <Badge color="orange">En attente RSSI</Badge>;
+  if (outcome === "failed")          return <Badge color="red">Échec</Badge>;
+  if (outcome === "skipped" || alreadyInRepo) return <Badge color="green">dans le dépôt</Badge>;
+  return <Badge color="yellow">à télécharger</Badge>;
+}
+
 function ImportOutcomeButton({ logs, done }) {
   const navigate = useNavigate();
   if (!done) return null;
@@ -293,6 +326,10 @@ function SearchImportTab() {
   const { logs, running, done, startWithBody } = useSSEStream();
   const logsRef = useRef(null);
 
+  // Vide tant que l'import n'est pas terminé — les badges restent sur leur
+  // état "avant import" (dans le dépôt / à télécharger) pendant que ça tourne.
+  const importOutcomes = done ? parseDependencyOutcomes(logs) : {};
+
   const currentFormat = DISTRIBUTIONS.find(d => d.codename === distribution)?.format || "deb";
 
   useEffect(() => {
@@ -442,7 +479,7 @@ function SearchImportTab() {
                     {deps.packages.map((p, i) => (
                       <div key={i} className="flex items-center justify-between text-xs">
                         <span className="text-gray-700">{p.name}</span>
-                        {p.already_in_repo ? <Badge color="green">dans le dépôt</Badge> : <Badge color="yellow">à télécharger</Badge>}
+                        <DependencyBadge name={p.name} alreadyInRepo={p.already_in_repo} outcome={importOutcomes[p.name]} />
                       </div>
                     ))}
                   </div>
