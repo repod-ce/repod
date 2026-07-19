@@ -52,10 +52,14 @@ def _sync_status_row(source_id):
 class TestSyncSourcePersistsEveryFailureType:
 
     def test_url_error_persists_status_error(self, db_test_engine):
-        """Comportement déjà correct avant le correctif — non-régression."""
+        """Comportement déjà correct avant le correctif — non-régression.
+        Patch time.sleep : sync_source() retente désormais 2 fois sur une
+        URLError (services/http_retry.py) avant d'abandonner — sans ce
+        patch, ce test attendrait réellement 2s+5s pour rien."""
         import services.package_index_apt as pia
 
-        with patch("urllib.request.urlopen", side_effect=urllib.error.URLError("connexion refusée")):
+        with patch("urllib.request.urlopen", side_effect=urllib.error.URLError("connexion refusée")), \
+             patch("services.http_retry.time.sleep"):
             result = pia.sync_source(_source())
 
         assert result["status"] == "error"
@@ -118,6 +122,7 @@ class TestSyncSourcePersistsEveryFailureType:
         import services.package_index_apt as pia
 
         with patch("urllib.request.urlopen", side_effect=urllib.error.URLError("timeout")), \
+             patch("services.http_retry.time.sleep"), \
              patch.object(pia, "DEFAULT_SOURCES", [_source("ubuntu-jammy")]):
             pia.sync_source(_source())
             statuses = pia.get_sync_status()

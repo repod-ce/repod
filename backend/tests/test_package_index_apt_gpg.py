@@ -181,8 +181,10 @@ class TestVerifyPackagesViaInRelease:
         """Changement de comportement délibéré : avant, une InRelease
         injoignable ne produisait qu'un avertissement (ok=True) et laissait
         passer un Packages.gz jamais authentifié. Désormais ça bloque le
-        sync de cette source."""
-        with patch("urllib.request.urlopen", side_effect=OSError("connexion refusée")):
+        sync de cette source. Patch time.sleep : cet appel retente 2 fois
+        (services/http_retry.py) avant d'abandonner."""
+        with patch("urllib.request.urlopen", side_effect=OSError("connexion refusée")), \
+             patch("services.http_retry.time.sleep"):
             ok, msg = pia._verify_packages_via_inrelease(
                 "https://example.test/dists/testsuite/main/binary-amd64/Packages.gz",
                 b"data",

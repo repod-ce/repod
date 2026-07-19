@@ -28,12 +28,12 @@ import io
 import logging
 import tarfile
 import urllib.error
-import urllib.request
 from datetime import datetime, timezone
 
 from sqlalchemy import text
 
 from db.engine import db_conn
+from services.http_retry import fetch_url
 
 logger = logging.getLogger("package_index_apk")
 
@@ -217,13 +217,15 @@ def _download_and_parse(apkindex_url: str, source: dict) -> list[dict]:
     """
     Télécharge APKINDEX.tar.gz, extrait le fichier APKINDEX et le parse.
     Retourne la liste des paquets.
+
+    Retente jusqu'à 2 fois (backoff 2s/5s) sur un aléa réseau transitoire —
+    voir services/http_retry.py.
     """
-    req = urllib.request.Request(
+    gz_data = fetch_url(
         apkindex_url,
-        headers={"User-Agent": "APK-Repo-Manager/1.0"}
+        headers={"User-Agent": "APK-Repo-Manager/1.0"},
+        timeout=60,
     )
-    with urllib.request.urlopen(req, timeout=60) as resp:
-        gz_data = resp.read()
 
     # Le fichier est un .tar.gz contenant "APKINDEX" et "DESCRIPTION"
     with tarfile.open(fileobj=io.BytesIO(gz_data), mode="r:gz") as tar:

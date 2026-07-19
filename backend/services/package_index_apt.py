@@ -9,13 +9,13 @@ import logging
 import lzma
 import os
 import subprocess
-import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
 from sqlalchemy import text
 
 from db.engine import db_conn
+from services.http_retry import fetch_url
 
 logger = logging.getLogger("package_index_apt")
 
@@ -320,12 +320,11 @@ def _verify_packages_via_inrelease(packages_url: str, gz_data: bytes) -> tuple[b
         return False, f"Dérivation InRelease URL échouée : {exc}"
 
     try:
-        req = urllib.request.Request(
+        inrelease_text = fetch_url(
             inrelease_url,
             headers={"User-Agent": "APT-Repo-Manager/2.0"},
-        )
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            inrelease_text = resp.read().decode("utf-8", errors="replace")
+            timeout=30,
+        ).decode("utf-8", errors="replace")
     except Exception as exc:
         logger.warning("[package_index_apt] InRelease non disponible pour %s : %s", packages_url, exc)
         return False, f"InRelease injoignable — authenticité de Packages.gz non vérifiable : {exc}"
@@ -485,16 +484,20 @@ def sync_source(source: dict) -> dict:
     """
     Télécharge et indexe Packages.gz pour une source donnée.
     Retourne un résumé du résultat.
+
+    Le téléchargement retente jusqu'à 2 fois (backoff 2s/5s) sur un aléa
+    réseau transitoire (timeout, connexion refusée, HTTP 5xx/429) — jamais
+    sur un 404/403, qui indique que la source elle-même a un problème
+    (déplacée/retirée), pas un incident passager. Voir services/http_retry.py.
     """
     source_id = source["id"]
 
     try:
-        req = urllib.request.Request(
+        gz_data = fetch_url(
             source["url"],
-            headers={"User-Agent": "APT-Repo-Manager/2.0"}
+            headers={"User-Agent": "APT-Repo-Manager/2.0"},
+            timeout=30,
         )
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            gz_data = resp.read()
 
         ok, msg = _verify_packages_via_inrelease(source["url"], gz_data)
         if not ok:

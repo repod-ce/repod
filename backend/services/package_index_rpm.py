@@ -27,6 +27,7 @@ from datetime import datetime, timezone
 from sqlalchemy import text
 
 from db.engine import db_conn
+from services.http_retry import fetch_url
 
 logger = logging.getLogger("package_index_rpm")
 
@@ -366,11 +367,12 @@ def init_db():
 def _fetch_metadata_url(repomd_url: str, metadata_type: str = "primary") -> str | None:
     """
     Télécharge repomd.xml et extrait l'URL d'un fichier de métadonnées.
+    Retente jusqu'à 2 fois (backoff 2s/5s) sur un aléa réseau transitoire
+    (repomd.xml lui-même est petit — quelques Ko — contrairement à
+    primary.xml.gz plus bas, jamais retenté ici : voir services/http_retry.py).
     """
     try:
-        req = urllib.request.Request(repomd_url, headers={"User-Agent": "RPM-Repo-Manager/1.0"})
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            repomd_data = resp.read()
+        repomd_data = fetch_url(repomd_url, headers={"User-Agent": "RPM-Repo-Manager/1.0"}, timeout=30)
     except Exception:
         return None
 
@@ -390,11 +392,10 @@ def _fetch_metadata_url(repomd_url: str, metadata_type: str = "primary") -> str 
 
 
 def _fetch_metadata_info(repomd_url: str, metadata_type: str = "primary") -> tuple[str | None, str | None]:
-    """Retourne (url, sha256) pour un type de métadonnée depuis repomd.xml."""
+    """Retourne (url, sha256) pour un type de métadonnée depuis repomd.xml.
+    Retente jusqu'à 2 fois sur aléa réseau transitoire — voir _fetch_metadata_url()."""
     try:
-        req = urllib.request.Request(repomd_url, headers={"User-Agent": "RPM-Repo-Manager/1.0"})
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            repomd_data = resp.read()
+        repomd_data = fetch_url(repomd_url, headers={"User-Agent": "RPM-Repo-Manager/1.0"}, timeout=30)
     except Exception:
         return None, None
 
