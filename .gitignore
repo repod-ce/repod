@@ -16,6 +16,14 @@ repos/certs/
 gnupg/
 repos/gnupg/
 
+# Exception : trousseau de clés PUBLIQUES Ubuntu/Debian (upstream-archive-keyring.gpg)
+# utilisé pour vérifier la signature GPG d'InRelease lors de la synchronisation
+# de l'index (services/package_index_apt.py) — ce ne sont pas des secrets, ce
+# sont les clés officielles extraites des paquets ubuntu-keyring/debian-archive-keyring,
+# il DOIT être committé pour que la vérification fonctionne.
+!backend/security-keys/
+!backend/security-keys/*.gpg
+
 # Clés SSH — répertoire entier
 backend/ssh/
 

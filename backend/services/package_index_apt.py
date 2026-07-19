@@ -8,6 +8,7 @@ import hashlib
 import logging
 import lzma
 import os
+import subprocess
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
@@ -231,27 +232,92 @@ def init_db():
     pass
 
 
+_UPSTREAM_KEYRING_PATH = os.getenv(
+    "UPSTREAM_ARCHIVE_KEYRING_PATH",
+    str(Path(__file__).resolve().parent.parent / "security-keys" / "upstream-archive-keyring.gpg"),
+)
+
+
+def _verify_inrelease_gpg(inrelease_text: str) -> tuple[bool, str]:
+    """
+    Vérifie la signature GPG clearsign d'InRelease contre le trousseau
+    Ubuntu/Debian embarqué (backend/security-keys/upstream-archive-keyring.gpg
+    — clés officielles extraites des paquets ubuntu-keyring/debian-archive-keyring,
+    jamais tapées à la main).
+
+    C'était l'étape manquante jusqu'ici : le code comparait déjà le SHA256
+    déclaré par InRelease avec celui de Packages.gz, mais ne vérifiait
+    JAMAIS qu'InRelease lui-même était authentique — n'importe quel MITM
+    pouvait donc servir un InRelease et un Packages.gz forgés ensemble, le
+    SHA256 "correspondant" par construction. Un InRelease peut porter
+    plusieurs signatures (suites de transition, ex: focal signé à la fois
+    par la clé 2012 et 2018) — on exige au moins une GOODSIG et aucune
+    BADSIG, exactement le critère qu'apt lui-même applique ; une signature
+    d'une clé absente du trousseau (ERRSIG/NO_PUBKEY) est ignorée sans
+    faire échouer la vérification, tant qu'au moins une autre est valide.
+    """
+    if not os.path.exists(_UPSTREAM_KEYRING_PATH):
+        return False, f"Trousseau de vérification upstream introuvable : {_UPSTREAM_KEYRING_PATH}"
+
+    import tempfile
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".InRelease", delete=False) as f:
+        f.write(inrelease_text)
+        tmp_path = f.name
+
+    try:
+        r = subprocess.run(
+            ["gpg", "--no-default-keyring", "--keyring", _UPSTREAM_KEYRING_PATH,
+             "--status-fd", "1", "--verify", tmp_path],
+            capture_output=True, text=True, timeout=15,
+        )
+    except Exception as exc:
+        return False, f"Échec d'exécution de gpg --verify : {exc}"
+    finally:
+        os.unlink(tmp_path)
+
+    status_lines = [line for line in r.stdout.splitlines() if line.startswith("[GNUPG:]")]
+    if any(" BADSIG " in line for line in status_lines):
+        return False, "Signature GPG d'InRelease invalide — possible altération ou attaque MITM"
+    if not any(" GOODSIG " in line for line in status_lines):
+        return False, (
+            "Aucune signature GPG valide sur InRelease (clé émettrice absente du "
+            "trousseau upstream-archive-keyring.gpg)"
+        )
+    return True, "Signature GPG InRelease vérifiée"
+
+
 def _verify_packages_via_inrelease(packages_url: str, gz_data: bytes) -> tuple[bool, str]:
     """
-    Vérifie l'intégrité de Packages.gz en téléchargeant InRelease et en
-    comparant le SHA256 déclaré avec celui du fichier téléchargé.
+    Vérifie l'authenticité ET l'intégrité de Packages.gz :
+      1. Télécharge InRelease.
+      2. Vérifie sa signature GPG (_verify_inrelease_gpg) — l'ancre de
+         confiance réelle, absente jusqu'ici malgré ce que suggérait le nom
+         de cette fonction.
+      3. Une fois InRelease authentifié, compare le SHA256 qu'il déclare
+         pour ce Packages avec celui réellement téléchargé.
 
-    Chain of trust : InRelease (signé GPG par Ubuntu/Debian) → SHA256 de Packages.gz
-    → SHA256 de chaque paquet individuel dans la section SHA256 de Packages.gz.
+    Chain of trust complète : signature GPG InRelease → SHA256 de
+    Packages.gz → SHA256 de chaque paquet individuel dans Packages.gz.
 
-    Retourne (ok, message). Si ok=False, le sync doit être annulé.
+    Retourne (ok, message). Si ok=False, le sync de cette source est
+    annulé — toute étape qui échoue (InRelease injoignable, signature
+    invalide, SHA256 absent ou non correspondant) fait désormais échouer
+    la synchronisation. Avant ce correctif, une InRelease injoignable ou
+    un SHA256 absent ne produisaient qu'un avertissement et laissaient
+    passer un Packages.gz jamais authentifié — la vérification n'était
+    donc, dans les faits, jamais réellement obligatoire.
     """
     try:
         parts = packages_url.split("/dists/")
         if len(parts) != 2:
-            return True, "URL InRelease non dérivable (pas de /dists/ dans l'URL)"
+            return False, "URL InRelease non dérivable (pas de /dists/ dans l'URL) — vérification impossible"
         base_url = parts[0]
         after_dists = parts[1]
         codename = after_dists.split("/")[0]
         relative_path = "/".join(after_dists.split("/")[1:])
         inrelease_url = f"{base_url}/dists/{codename}/InRelease"
     except Exception as exc:
-        return True, f"Dérivation InRelease URL échouée : {exc}"
+        return False, f"Dérivation InRelease URL échouée : {exc}"
 
     try:
         req = urllib.request.Request(
@@ -262,7 +328,12 @@ def _verify_packages_via_inrelease(packages_url: str, gz_data: bytes) -> tuple[b
             inrelease_text = resp.read().decode("utf-8", errors="replace")
     except Exception as exc:
         logger.warning("[package_index_apt] InRelease non disponible pour %s : %s", packages_url, exc)
-        return True, f"InRelease indisponible (avertissement) : {exc}"
+        return False, f"InRelease injoignable — authenticité de Packages.gz non vérifiable : {exc}"
+
+    gpg_ok, gpg_msg = _verify_inrelease_gpg(inrelease_text)
+    if not gpg_ok:
+        logger.error("[package_index_apt] Échec vérification GPG InRelease (%s) : %s", inrelease_url, gpg_msg)
+        return False, gpg_msg
 
     expected_sha256: str | None = None
     in_sha256_section = False
@@ -284,7 +355,7 @@ def _verify_packages_via_inrelease(packages_url: str, gz_data: bytes) -> tuple[b
             "[package_index_apt] SHA256 pour '%s' absent de InRelease (%s)",
             relative_path, inrelease_url,
         )
-        return True, f"SHA256 non trouvé dans InRelease pour {relative_path}"
+        return False, f"SHA256 non trouvé dans InRelease (pourtant authentifié) pour {relative_path}"
 
     actual_sha256 = hashlib.sha256(gz_data).hexdigest()
     if actual_sha256 != expected_sha256:
@@ -295,7 +366,7 @@ def _verify_packages_via_inrelease(packages_url: str, gz_data: bytes) -> tuple[b
             f"  Source              : {packages_url}"
         )
 
-    return True, f"Intégrité Packages.gz vérifiée via InRelease (sha256: {actual_sha256[:16]}…)"
+    return True, f"Packages.gz authentifié (GPG InRelease + SHA256 : {actual_sha256[:16]}…)"
 
 
 def _decompress(data: bytes, url: str) -> str:
