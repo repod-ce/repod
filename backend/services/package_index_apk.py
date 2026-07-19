@@ -26,9 +26,14 @@ Interface compatible avec package_index_apt.py :
 """
 import io
 import logging
+import os
+import subprocess
 import tarfile
+import tempfile
 import urllib.error
+import zlib
 from datetime import datetime, timezone
+from pathlib import Path
 
 from sqlalchemy import text
 
@@ -36,6 +41,15 @@ from db.engine import db_conn
 from services.http_retry import fetch_url
 
 logger = logging.getLogger("package_index_apk")
+
+# Répertoire des clés RSA publiques Alpine — voir scripts/gen-apk-keys.sh.
+# Chaque fichier est nommé exactement comme le nom de clé embarqué dans la
+# signature (".SIGN.RSA.<nom>" -> fichier "<nom>"), pour une résolution
+# directe sans deviner quelle clé utiliser.
+_APK_KEYS_DIR = os.getenv(
+    "APK_ARCHIVE_KEYS_DIR",
+    str(Path(__file__).resolve().parent.parent / "security-keys" / "apk-keys"),
+)
 
 # ─── Sources APK configurées ─────────────────────────────────────────────────
 #
@@ -213,10 +227,97 @@ def _parse_apkindex(raw_text: str, source: dict) -> list[dict]:
     return packages
 
 
+def _split_apk_signed_archive(gz_data: bytes) -> tuple[bytes, bytes]:
+    """
+    Sépare APKINDEX.tar.gz en (tar.gz de signature, tar.gz de contenu).
+
+    Le fichier est la concaténation brute de deux flux gzip indépendants —
+    pas un seul flux avec deux entrées : `abuild-sign` écrit d'abord une
+    petite archive tar.gz contenant un fichier ".SIGN.RSA.<nom-clé>" (la
+    signature RSA brute), puis colle directement à la suite l'archive
+    tar.gz réelle (APKINDEX + DESCRIPTION). `zlib.decompressobj` avec
+    `unused_data` donne la frontière exacte entre les deux flux sans
+    deviner un déchargement de premier membre par recherche d'octets —
+    confirmé en direct contre un APKINDEX.tar.gz réel (dl-cdn.alpinelinux.org).
+    """
+    d = zlib.decompressobj(zlib.MAX_WBITS | 16)
+    d.decompress(gz_data)
+    boundary = len(gz_data) - len(d.unused_data)
+    return gz_data[:boundary], gz_data[boundary:]
+
+
+def _verify_apkindex_signature(gz_data: bytes) -> tuple[bool, str]:
+    """
+    Authentifie APKINDEX.tar.gz via sa signature RSA embarquée.
+
+    Contrairement à APT (GPG) et RPM (repomd.xml.asc détaché), Alpine ne
+    signe pas avec GPG : la signature est calculée par `abuild-sign` avec
+    `openssl dgst -sha1 -sign` sur les octets COMPRESSÉS du second flux
+    gzip (jamais sur le tar décompressé) — confirmé en direct : la
+    vérification échoue sur le tar décompressé et réussit sur le .tar.gz
+    compressé, ce qui confirme exactement ce que signe abuild-sign.
+
+    Politique : toujours fail-closed, contrairement à RPM. Les 8 sources
+    APK configurées (DEFAULT_SOURCES) sont TOUTES signées par la même clé
+    officielle Alpine (confirmé en direct) — un APKINDEX.tar.gz Alpine sans
+    signature valide n'est jamais un cas légitime comme "Fedora sans
+    repomd.xml.asc", c'est soit une corruption soit une falsification.
+    """
+    try:
+        sig_gz, content_gz = _split_apk_signed_archive(gz_data)
+    except Exception as exc:
+        return False, f"Impossible de séparer signature et contenu : {exc}"
+
+    if not content_gz:
+        return False, "Aucun contenu après le flux de signature — fichier tronqué ou non signé."
+
+    try:
+        with tarfile.open(fileobj=io.BytesIO(sig_gz), mode="r:gz") as tar:
+            sig_members = [m for m in tar.getmembers() if m.name.startswith(".SIGN.RSA.")]
+            if not sig_members:
+                return False, "Aucun fichier .SIGN.RSA.* trouvé — APKINDEX non signé."
+            member = sig_members[0]
+            key_name = member.name[len(".SIGN.RSA."):]
+            sig_file = tar.extractfile(member)
+            if sig_file is None:
+                return False, "Fichier de signature non extractible."
+            signature_bytes = sig_file.read()
+    except Exception as exc:
+        return False, f"Archive de signature illisible : {exc}"
+
+    key_path = os.path.join(_APK_KEYS_DIR, key_name)
+    if not os.path.exists(key_path):
+        return False, (
+            f"Clé publique inconnue du trousseau local : {key_name} "
+            f"(voir scripts/gen-apk-keys.sh)"
+        )
+
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            content_path = os.path.join(tmp, "content.tar.gz")
+            sig_path = os.path.join(tmp, "signature")
+            with open(content_path, "wb") as fh:
+                fh.write(content_gz)
+            with open(sig_path, "wb") as fh:
+                fh.write(signature_bytes)
+
+            proc = subprocess.run(
+                ["openssl", "dgst", "-sha1", "-verify", key_path,
+                 "-signature", sig_path, content_path],
+                capture_output=True, timeout=30,
+            )
+    except Exception as exc:
+        return False, f"Échec d'exécution d'openssl : {exc}"
+
+    if proc.returncode != 0:
+        return False, f"Signature RSA invalide (clé {key_name}) — contenu potentiellement altéré."
+    return True, ""
+
+
 def _download_and_parse(apkindex_url: str, source: dict) -> list[dict]:
     """
-    Télécharge APKINDEX.tar.gz, extrait le fichier APKINDEX et le parse.
-    Retourne la liste des paquets.
+    Télécharge APKINDEX.tar.gz, authentifie sa signature RSA, extrait le
+    fichier APKINDEX et le parse. Retourne la liste des paquets.
 
     Retente jusqu'à 2 fois (backoff 2s/5s) sur un aléa réseau transitoire —
     voir services/http_retry.py.
@@ -226,6 +327,10 @@ def _download_and_parse(apkindex_url: str, source: dict) -> list[dict]:
         headers={"User-Agent": "APK-Repo-Manager/1.0"},
         timeout=60,
     )
+
+    sig_ok, sig_msg = _verify_apkindex_signature(gz_data)
+    if not sig_ok:
+        raise ValueError(f"Vérification de signature APKINDEX échouée : {sig_msg}")
 
     # Le fichier est un .tar.gz contenant "APKINDEX" et "DESCRIPTION"
     with tarfile.open(fileobj=io.BytesIO(gz_data), mode="r:gz") as tar:

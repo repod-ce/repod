@@ -19,10 +19,13 @@ import gzip
 import hashlib
 import logging
 import os
+import subprocess
+import tempfile
 import urllib.error
 import urllib.request
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
+from pathlib import Path
 
 from sqlalchemy import text
 
@@ -30,6 +33,16 @@ from db.engine import db_conn
 from services.http_retry import fetch_url
 
 logger = logging.getLogger("package_index_rpm")
+
+# Trousseau GPG des clés publiques officielles AlmaLinux/Rocky/CentOS
+# Stream/openSUSE — voir scripts/gen-rpm-keyring.sh. Fedora/EPEL/Oracle Linux
+# ne publient aucun repomd.xml.asc (confirmé : 404 sur les 3) donc n'ont pas
+# besoin d'y figurer — _verify_repomd_gpg() le détecte et journalise un
+# avertissement au lieu d'échouer.
+_RPM_KEYRING_PATH = os.getenv(
+    "RPM_ARCHIVE_KEYRING_PATH",
+    str(Path(__file__).resolve().parent.parent / "security-keys" / "rpm-archive-keyring.gpg"),
+)
 
 # ─── Sources RPM publiques ────────────────────────────────────────────────────
 #
@@ -364,41 +377,95 @@ def init_db():
 
 # ─── Parsing repomd.xml ───────────────────────────────────────────────────────
 
-def _fetch_metadata_url(repomd_url: str, metadata_type: str = "primary") -> str | None:
+def _fetch_repomd_bytes(repomd_url: str) -> bytes | None:
     """
-    Télécharge repomd.xml et extrait l'URL d'un fichier de métadonnées.
-    Retente jusqu'à 2 fois (backoff 2s/5s) sur un aléa réseau transitoire
-    (repomd.xml lui-même est petit — quelques Ko — contrairement à
-    primary.xml.gz plus bas, jamais retenté ici : voir services/http_retry.py).
+    Télécharge repomd.xml une seule fois — réutilisé à la fois pour la
+    vérification GPG (_verify_repomd_gpg) et le parsing des métadonnées, pour
+    ne jamais authentifier un octet et en parser un autre. Retente jusqu'à 2
+    fois (backoff 2s/5s) sur un aléa réseau transitoire (repomd.xml lui-même
+    est petit — quelques Ko — contrairement à primary.xml.gz plus bas, jamais
+    retenté ici : voir services/http_retry.py).
     """
     try:
-        repomd_data = fetch_url(repomd_url, headers={"User-Agent": "RPM-Repo-Manager/1.0"}, timeout=30)
+        return fetch_url(repomd_url, headers={"User-Agent": "RPM-Repo-Manager/1.0"}, timeout=30)
     except Exception:
         return None
 
+
+def _verify_repomd_gpg(repomd_data: bytes, repomd_url: str) -> tuple[bool, str]:
+    """
+    Authentifie repomd.xml via sa signature détachée repomd.xml.asc, quand le
+    dépôt en publie une. Confirmé en direct au moment d'écrire ce correctif :
+    AlmaLinux/Rocky Linux/CentOS Stream/openSUSE publient tous un
+    repomd.xml.asc (HTTP 200) ; Fedora/EPEL/Oracle Linux n'en publient AUCUN
+    (HTTP 404 sur les 3) — leur mécanisme de confiance repose sur la
+    signature RPM par paquet (rpm --checksig), pas sur repomd. Sans
+    signature détachée, il n'existe donc aucune racine de confiance
+    cryptographique pour repomd.xml lui-même sur ces dépôts précis — seule
+    l'intégrité de primary.xml reste vérifiable via le SHA-256 qu'il contient
+    (_stream_download_and_parse), ce qui protège contre la corruption mais
+    pas contre un repomd.xml entièrement substitué par un attaquant MitM sur
+    ces dépôts. Documenté ici plutôt que silencieusement toléré.
+
+    Politique, délibérément différente d'un simple pass/fail :
+      - Pas de repomd.xml.asc publié (404/erreur réseau) -> ok=True avec un
+        message d'avertissement (rien à vérifier, ce n'est pas un échec).
+      - BADSIG / ERRSIG / clé inconnue (NO_PUBKEY) -> ok=False, échec FERMÉ :
+        un aléa réseau n'explique jamais une signature cryptographiquement
+        fausse ou faite par une clé absente du trousseau.
+      - EXPKEYSIG (signature valide mais clé expirée) -> ok=True avec
+        avertissement : confirmé en direct que la clé de signature openSUSE
+        (keyid 29B700A4) est réellement expirée en production à la date
+        d'écriture de ce correctif — échouer fermé sur ce cas casserait la
+        synchronisation openSUSE en permanence, pour un signal qui indique
+        "la distro doit tourner sa clé", pas une falsification.
+      - GOODSIG -> ok=True, aucun message.
+    """
     try:
-        tree = ET.fromstring(repomd_data)
-        ns = {"r": "http://linux.duke.edu/metadata/repo"}
-        for data in tree.findall("r:data", ns):
-            if data.get("type") == metadata_type:
-                loc = data.find("r:location", ns)
-                if loc is not None:
-                    href = loc.get("href", "").lstrip("/")
-                    base = repomd_url.rsplit("/repodata/", 1)[0]
-                    return f"{base}/{href}"
+        asc_data = fetch_url(f"{repomd_url}.asc", headers={"User-Agent": "RPM-Repo-Manager/1.0"}, timeout=30)
     except Exception:
-        pass
-    return None
+        return True, (
+            "Aucun repomd.xml.asc publié par ce dépôt — repomd.xml non authentifié "
+            "cryptographiquement (intégrité de primary.xml toujours vérifiée via SHA-256)."
+        )
 
+    if not os.path.exists(_RPM_KEYRING_PATH):
+        logger.error("[package_index_rpm] Trousseau GPG RPM introuvable : %s", _RPM_KEYRING_PATH)
+        return False, f"Trousseau GPG RPM introuvable ({_RPM_KEYRING_PATH})"
 
-def _fetch_metadata_info(repomd_url: str, metadata_type: str = "primary") -> tuple[str | None, str | None]:
-    """Retourne (url, sha256) pour un type de métadonnée depuis repomd.xml.
-    Retente jusqu'à 2 fois sur aléa réseau transitoire — voir _fetch_metadata_url()."""
     try:
-        repomd_data = fetch_url(repomd_url, headers={"User-Agent": "RPM-Repo-Manager/1.0"}, timeout=30)
-    except Exception:
-        return None, None
+        with tempfile.TemporaryDirectory() as tmp:
+            repomd_path = os.path.join(tmp, "repomd.xml")
+            sig_path = os.path.join(tmp, "repomd.xml.asc")
+            with open(repomd_path, "wb") as f:
+                f.write(repomd_data)
+            with open(sig_path, "wb") as f:
+                f.write(asc_data)
 
+            proc = subprocess.run(
+                ["gpg", "--no-default-keyring", "--keyring", _RPM_KEYRING_PATH,
+                 "--status-fd", "1", "--verify", sig_path, repomd_path],
+                capture_output=True, timeout=30,
+            )
+    except Exception as exc:
+        return False, f"Échec d'exécution de gpg : {exc}"
+
+    status_out = proc.stdout.decode("utf-8", errors="replace")
+
+    if "[GNUPG:] BADSIG" in status_out:
+        return False, "Signature repomd.xml INVALIDE (BADSIG) — contenu potentiellement altéré."
+    if "[GNUPG:] ERRSIG" in status_out or "[GNUPG:] NO_PUBKEY" in status_out:
+        return False, "Signature repomd.xml faite par une clé inconnue du trousseau — voir scripts/gen-rpm-keyring.sh."
+    if "[GNUPG:] EXPKEYSIG" in status_out:
+        return True, "Signature repomd.xml valide, mais faite par une clé EXPIRÉE — la distro doit tourner sa clé de signature."
+    if "[GNUPG:] GOODSIG" in status_out:
+        return True, ""
+
+    return False, "Vérification GPG de repomd.xml inconclusive (aucun statut GOODSIG/BADSIG/EXPKEYSIG reconnu)."
+
+
+def _parse_metadata_info(repomd_data: bytes, repomd_url: str, metadata_type: str = "primary") -> tuple[str | None, str | None]:
+    """Extrait (url, sha256) pour un type de métadonnée depuis des octets repomd.xml déjà téléchargés."""
     try:
         tree = ET.fromstring(repomd_data)
         ns = {"r": "http://linux.duke.edu/metadata/repo"}
@@ -418,6 +485,23 @@ def _fetch_metadata_info(repomd_url: str, metadata_type: str = "primary") -> tup
     except Exception:
         pass
     return None, None
+
+
+def _fetch_metadata_url(repomd_url: str, metadata_type: str = "primary") -> str | None:
+    """Télécharge repomd.xml et extrait l'URL d'un fichier de métadonnées (sans vérif GPG)."""
+    repomd_data = _fetch_repomd_bytes(repomd_url)
+    if repomd_data is None:
+        return None
+    url, _ = _parse_metadata_info(repomd_data, repomd_url, metadata_type)
+    return url
+
+
+def _fetch_metadata_info(repomd_url: str, metadata_type: str = "primary") -> tuple[str | None, str | None]:
+    """Retourne (url, sha256) pour un type de métadonnée depuis repomd.xml (sans vérif GPG)."""
+    repomd_data = _fetch_repomd_bytes(repomd_url)
+    if repomd_data is None:
+        return None, None
+    return _parse_metadata_info(repomd_data, repomd_url, metadata_type)
 
 
 def _fetch_primary_xml_url(repomd_url: str) -> str | None:
@@ -701,9 +785,10 @@ def sync_source(source: dict, stop_event=None) -> dict:
     stop_event : threading.Event optionnel — si set(), annule l'opération en cours.
 
     Processus :
-      1. Télécharger repomd.xml → URL de primary.xml
-      2. Télécharger en streaming + décompresser à la volée
-      3. Parser avec iterparse ; commits rapides par batch
+      1. Télécharger repomd.xml, l'authentifier via repomd.xml.asc (quand publié)
+      2. Extraire l'URL + SHA-256 de primary.xml depuis repomd.xml
+      3. Télécharger en streaming + décompresser à la volée
+      4. Parser avec iterparse ; commits rapides par batch
     """
     source_id  = source["id"]
     repomd_url = source.get("repomd_url", "")
@@ -711,7 +796,22 @@ def sync_source(source: dict, stop_event=None) -> dict:
     if stop_event is not None and stop_event.is_set():
         return {"source_id": source_id, "status": "cancelled", "error": "Annulé"}
 
-    primary_url, primary_sha256 = _fetch_metadata_info(repomd_url, "primary")
+    repomd_data = _fetch_repomd_bytes(repomd_url)
+    if repomd_data is None:
+        err = f"Téléchargement de repomd.xml échoué ({repomd_url})"
+        _log_sync(source_id, "error", 0, err)
+        return {"source_id": source_id, "status": "error", "error": err}
+
+    gpg_ok, gpg_msg = _verify_repomd_gpg(repomd_data, repomd_url)
+    if not gpg_ok:
+        err = f"Vérification GPG de repomd.xml échouée : {gpg_msg}"
+        logger.error("[package_index_rpm] %s: %s", source_id, err)
+        _log_sync(source_id, "error", 0, err)
+        return {"source_id": source_id, "status": "error", "error": err}
+    if gpg_msg:
+        logger.warning("[package_index_rpm] %s: %s", source_id, gpg_msg)
+
+    primary_url, primary_sha256 = _parse_metadata_info(repomd_data, repomd_url, "primary")
     if not primary_url:
         err = f"Impossible de localiser primary.xml dans repomd.xml ({repomd_url})"
         _log_sync(source_id, "error", 0, err)
