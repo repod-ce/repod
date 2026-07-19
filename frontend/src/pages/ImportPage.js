@@ -54,6 +54,10 @@ function IconArrowRight({ className = "w-3.5 h-3.5" }) {
   return <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3"/></svg>;
 }
 
+function Spinner({ className = "w-3.5 h-3.5" }) {
+  return <div className={`${className} rounded-full border-2 border-white border-t-transparent animate-spin flex-shrink-0`} />;
+}
+
 // Les trois importeurs (APT/RPM/APK) émettent le même vocabulaire de log SSE
 // pour ces deux issues — voir services/importer_{apt,rpm,apk}.py:import_one().
 // "[ADD] ..." = publié dans le dépôt ; "en attente révision RSSI" = envoyé en
@@ -420,7 +424,8 @@ function SearchImportTab() {
                   <p className="text-xs text-gray-400 mt-0.5">→ <strong>{distribution}</strong></p>
                 </div>
                 <button onClick={handleImport} disabled={running}
-                  className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors">
+                  className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors">
+                  {running && <Spinner />}
                   {running ? "Import en cours..." : "Importer"}
                 </button>
               </div>
@@ -558,8 +563,9 @@ function BatchImportTab() {
           <button
             onClick={handleBatch}
             disabled={running || !input.trim()}
-            className="px-5 py-2.5 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
+            className="flex items-center gap-2 px-5 py-2.5 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
           >
+            {running && <Spinner />}
             {running ? "Import en cours..." : "Lancer l'import"}
           </button>
         </div>

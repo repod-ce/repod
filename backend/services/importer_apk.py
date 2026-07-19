@@ -290,6 +290,24 @@ def import_package_stream(
         # 1. Résolution des dépendances (transitive — voir resolve_deps_online())
         yield _emit("Résolution de l'arbre de dépendances (transitif)...")
         deps_info = resolve_deps_online(package_name, distro=distribution)
+        if not deps_info["success"] and "introuvable dans l'index" in deps_info.get("error", ""):
+            # Une seule resynchronisation automatique par appel — même
+            # raisonnement que importer_apt.py/importer_rpm.py. Ne touche pas
+            # au comportement "skip" existant pour une dépendance individuelle
+            # absente de l'index (voir plus bas) — seulement le cas où le
+            # paquet PRINCIPAL n'a jamais été synchronisé du tout.
+            yield _emit(f"'{package_name}' absent de l'index local — synchronisation en cours...", "warning")
+            try:
+                from services.package_index_apk import sync_all as _apk_sync_all
+                _apk_sync_all()
+            except Exception:
+                pass
+            deps_info = resolve_deps_online(package_name, distro=distribution)
+            if deps_info["success"]:
+                yield _emit("Synchronisation terminée, reprise de l'import.", "success")
+        if not deps_info["success"]:
+            yield _emit(deps_info["error"], "error")
+            return
         already   = deps_info["already_in_repo"]
         to_dl     = deps_info["to_download"]
         total     = deps_info["total_deps"]

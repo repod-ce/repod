@@ -385,6 +385,19 @@ def import_package_stream(
     # Résolution des dépendances (transitive — voir resolve_deps_online())
     yield emit("Résolution de l'arbre de dépendances (transitif)...")
     deps_info = resolve_deps_online(package_name)
+    if not deps_info["success"] and "introuvable dans l'index" in deps_info.get("error", ""):
+        # Une seule resynchronisation automatique par appel — même
+        # raisonnement que importer_apt.py:import_package_stream() : best-effort,
+        # ne fait jamais échouer l'import si la synchro elle-même échoue.
+        yield emit(f"'{package_name}' absent de l'index local — synchronisation en cours...", "warning")
+        try:
+            from services.package_index_rpm import sync_all as _rpm_sync_all
+            _rpm_sync_all()
+        except Exception:
+            pass
+        deps_info = resolve_deps_online(package_name)
+        if deps_info["success"]:
+            yield emit("Synchronisation terminée, reprise de l'import.", "success")
     if not deps_info["success"]:
         yield emit(deps_info["error"], "error")
         return

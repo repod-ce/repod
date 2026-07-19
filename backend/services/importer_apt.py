@@ -25,6 +25,28 @@ def _run(cmd: list[str], cwd: str = None) -> tuple[int, str, str]:
     return result.returncode, result.stdout, result.stderr
 
 
+def _is_index_miss(message: str) -> bool:
+    """Détecte un échec dû à une dépendance absente de l'index local de
+    synchronisation — voir routers/upload.py:_is_index_miss(), même
+    diagnostic mais dupliqué ici plutôt qu'importé (services ne dépendent
+    jamais des routers)."""
+    return "introuvable dans l'index" in (message or "")
+
+
+def _sync_index_now() -> None:
+    """Resynchronise l'index APT (source publique → PostgreSQL), best-effort —
+    une synchronisation qui échoue (réseau, source indisponible) ne doit
+    jamais faire échouer l'import en cours ; le retry qui suit échouera
+    simplement avec le même message qu'avant, sans régression. Synchrone
+    (import_package_stream() est un générateur synchrone consommé par
+    StreamingResponse, pas une coroutine)."""
+    from services.package_index_apt import sync_all
+    try:
+        sync_all()
+    except Exception:
+        pass
+
+
 def _get_source_base_url(source_url: str) -> str:
     """
     Extrait l'URL de base depuis l'URL Packages.gz.
@@ -159,7 +181,17 @@ def import_one(pkg_row: dict, distribution: str, user: str, group: str | None = 
 
     tmp_dir = tempfile.mkdtemp(prefix="apt-import-")
     try:
-        path, info, expected_sha256 = _download_deb(pkg_name, tmp_dir)
+        # `distro=distribution` est indispensable ici : sans lui, _download_deb()
+        # retombe sur get_package_info(name) SANS filtre de distribution — un
+        # SELECT ... LIMIT 1 sans ORDER BY sur un nom présent dans plusieurs
+        # distros (ex: "prometheus" en jammy/noble/focal/bookworm...) peut
+        # retourner un .deb d'une AUTRE distro que celle demandée, de façon non
+        # déterministe (l'ordre physique des lignes peut changer entre deux
+        # synchronisations). Passer distro= force le filtre exact `WHERE distro
+        # = :distro` de get_package_info_for_distro(), cohérent avec la distro
+        # déjà résolue par l'appelant et déjà utilisée plus bas pour
+        # run_validation_pipeline()/generate_manifest().
+        path, info, expected_sha256 = _download_deb(pkg_name, tmp_dir, distro=distribution)
         if not path:
             return {"status": "error", "name": pkg_name, "version": version,
                     "message": info, "steps": []}
@@ -245,16 +277,32 @@ def import_package_stream(package_name: str, user: str, group: str | None = None
 
     yield emit(f"Démarrage de l'import de '{package_name}'...")
 
+    # Une seule resynchronisation automatique par appel — évite qu'un import
+    # avec plusieurs dépendances absentes de l'index ne déclenche une
+    # synchronisation complète à répétition (coûteuse : plusieurs dizaines de
+    # sources publiques). Même choix que _auto_import_missing_deps() côté
+    # dépôt manuel (routers/upload.py).
+    synced_once = False
+
     try:
         # 1. Vérifier que le paquet est dans l'index
         row = index_get_info(package_name)
+        if not row:
+            yield emit(f"'{package_name}' absent de l'index local — synchronisation en cours...", "warning")
+            synced_once = True
+            _sync_index_now()
+            row = index_get_info(package_name)
+            if row:
+                yield emit("Synchronisation terminée, reprise de l'import.", "success")
+
         # Auto-détecter la distribution depuis la source si non fournie
         target_distrib = distribution or detect_distribution_from_source(row.get("source_id", "") if row else "")
         yield emit(f"Distribution cible : {target_distrib}")
         if not row:
             yield emit(
-                f"Paquet '{package_name}' introuvable dans l'index local. "
-                "Lancez une synchronisation depuis l'onglet Synchronisation.",
+                f"Paquet '{package_name}' introuvable dans l'index local, "
+                "même après synchronisation — vérifiez que ce nom existe bien "
+                "dans une des sources configurées.",
                 "error"
             )
             return
@@ -330,11 +378,30 @@ def import_package_stream(package_name: str, user: str, group: str | None = None
         for pkg in to_download:
             pkg_row = index_get_info(pkg)
             if not pkg_row:
-                yield emit(f"  [WARN] Ignoré : '{pkg}' introuvable dans l'index", "warning")
-                continue
+                if not synced_once:
+                    yield emit(f"  '{pkg}' absent de l'index — synchronisation en cours...", "warning")
+                    synced_once = True
+                    _sync_index_now()
+                    pkg_row = index_get_info(pkg)
+                if not pkg_row:
+                    yield emit(f"  [WARN] Ignoré : '{pkg}' introuvable dans l'index", "warning")
+                    continue
 
             yield emit(f"  [DL] {pkg}...")
             result = import_one(pkg_row, target_distrib, user, group=group or package_name)
+
+            # Le paquet EXISTE dans l'index (pkg_row non-None ci-dessus) mais le
+            # téléchargement peut encore échouer avec ce même message si la
+            # ligne trouvée n'a pas de version correspondant à target_distrib
+            # (ex : indexé pour noble/focal mais pas encore pour jammy) —
+            # même resynchronisation-et-réessai, une seule fois par appel.
+            if result["status"] == "error" and _is_index_miss(result.get("message")) and not synced_once:
+                yield emit(f"  '{pkg}' absent de l'index pour {target_distrib} — synchronisation en cours...", "warning")
+                synced_once = True
+                _sync_index_now()
+                pkg_row = index_get_info(pkg)
+                if pkg_row:
+                    result = import_one(pkg_row, target_distrib, user, group=group or package_name)
 
             for step in result.get("steps", []):
                 label = _STEP_LABELS.get(step["name"], step["name"].capitalize())
