@@ -224,6 +224,212 @@ DEFAULT_SOURCES = [
         "arch": "amd64",
         "security": True,
     },
+    # ── arm64 ────────────────────────────────────────────────────────────────
+    # Ubuntu arm64 n'est PAS servi par archive.ubuntu.com/security.ubuntu.com
+    # (confirmé en direct : 404 sur les trois) — c'est un mirroir séparé,
+    # ports.ubuntu.com/ubuntu-ports, qui unifie main+updates+security sous un
+    # seul host (contrairement à amd64 où security.ubuntu.com est distinct).
+    # Signé par la MÊME clé Ubuntu déjà dans upstream-archive-keyring.gpg
+    # (confirmé en direct : GOODSIG sur la même keyid 871920D1991BC93C) —
+    # aucun ajout de clé nécessaire. Debian arm64, lui, est une architecture
+    # de release à part entière et vit sur le MÊME host que amd64
+    # (deb.debian.org/security.debian.org), sans distinction particulière.
+    {
+        "id": "ubuntu-jammy-arm64",
+        "label": "Ubuntu 22.04 (Jammy) main [arm64]",
+        "url": "https://ports.ubuntu.com/ubuntu-ports/dists/jammy/main/binary-arm64/Packages.gz",
+        "distro": "jammy",
+        "component": "main",
+        "arch": "arm64",
+    },
+    {
+        "id": "ubuntu-jammy-universe-arm64",
+        "label": "Ubuntu 22.04 (Jammy) universe [arm64]",
+        "url": "https://ports.ubuntu.com/ubuntu-ports/dists/jammy/universe/binary-arm64/Packages.gz",
+        "distro": "jammy",
+        "component": "universe",
+        "arch": "arm64",
+    },
+    {
+        "id": "ubuntu-jammy-updates-arm64",
+        "label": "Ubuntu 22.04 Updates (main) [arm64]",
+        "url": "https://ports.ubuntu.com/ubuntu-ports/dists/jammy-updates/main/binary-arm64/Packages.gz",
+        "distro": "jammy-updates",
+        "component": "main",
+        "arch": "arm64",
+    },
+    {
+        "id": "ubuntu-jammy-updates-universe-arm64",
+        "label": "Ubuntu 22.04 Updates (universe) [arm64]",
+        "url": "https://ports.ubuntu.com/ubuntu-ports/dists/jammy-updates/universe/binary-arm64/Packages.gz",
+        "distro": "jammy-updates",
+        "component": "universe",
+        "arch": "arm64",
+    },
+    {
+        "id": "ubuntu-noble-arm64",
+        "label": "Ubuntu 24.04 (Noble) main [arm64]",
+        "url": "https://ports.ubuntu.com/ubuntu-ports/dists/noble/main/binary-arm64/Packages.gz",
+        "distro": "noble",
+        "component": "main",
+        "arch": "arm64",
+    },
+    {
+        "id": "ubuntu-noble-universe-arm64",
+        "label": "Ubuntu 24.04 (Noble) universe [arm64]",
+        "url": "https://ports.ubuntu.com/ubuntu-ports/dists/noble/universe/binary-arm64/Packages.gz",
+        "distro": "noble",
+        "component": "universe",
+        "arch": "arm64",
+    },
+    {
+        "id": "ubuntu-noble-updates-arm64",
+        "label": "Ubuntu 24.04 Updates (main) [arm64]",
+        "url": "https://ports.ubuntu.com/ubuntu-ports/dists/noble-updates/main/binary-arm64/Packages.gz",
+        "distro": "noble-updates",
+        "component": "main",
+        "arch": "arm64",
+        "security": True,
+    },
+    {
+        "id": "ubuntu-noble-updates-universe-arm64",
+        "label": "Ubuntu 24.04 Updates (universe) [arm64]",
+        "url": "https://ports.ubuntu.com/ubuntu-ports/dists/noble-updates/universe/binary-arm64/Packages.gz",
+        "distro": "noble-updates",
+        "component": "universe",
+        "arch": "arm64",
+        "security": True,
+    },
+    {
+        "id": "ubuntu-focal-arm64",
+        "label": "Ubuntu 20.04 (Focal) main [arm64]",
+        "url": "https://ports.ubuntu.com/ubuntu-ports/dists/focal/main/binary-arm64/Packages.gz",
+        "distro": "focal",
+        "component": "main",
+        "arch": "arm64",
+    },
+    {
+        "id": "ubuntu-focal-universe-arm64",
+        "label": "Ubuntu 20.04 (Focal) universe [arm64]",
+        "url": "https://ports.ubuntu.com/ubuntu-ports/dists/focal/universe/binary-arm64/Packages.gz",
+        "distro": "focal",
+        "component": "universe",
+        "arch": "arm64",
+    },
+    {
+        "id": "ubuntu-focal-updates-arm64",
+        "label": "Ubuntu 20.04 Updates (main) [arm64]",
+        "url": "https://ports.ubuntu.com/ubuntu-ports/dists/focal-updates/main/binary-arm64/Packages.gz",
+        "distro": "focal-updates",
+        "component": "main",
+        "arch": "arm64",
+        "security": True,
+    },
+    {
+        "id": "ubuntu-focal-updates-universe-arm64",
+        "label": "Ubuntu 20.04 Updates (universe) [arm64]",
+        "url": "https://ports.ubuntu.com/ubuntu-ports/dists/focal-updates/universe/binary-arm64/Packages.gz",
+        "distro": "focal-updates",
+        "component": "universe",
+        "arch": "arm64",
+        "security": True,
+    },
+    {
+        "id": "debian-bookworm-arm64",
+        "label": "Debian 12 (Bookworm) main [arm64]",
+        "url": "https://deb.debian.org/debian/dists/bookworm/main/binary-arm64/Packages.gz",
+        "distro": "bookworm",
+        "component": "main",
+        "arch": "arm64",
+    },
+    {
+        "id": "debian-bookworm-contrib-arm64",
+        "label": "Debian 12 (Bookworm) contrib [arm64]",
+        "url": "https://deb.debian.org/debian/dists/bookworm/contrib/binary-arm64/Packages.gz",
+        "distro": "bookworm",
+        "component": "contrib",
+        "arch": "arm64",
+    },
+    {
+        "id": "debian-bookworm-non-free-arm64",
+        "label": "Debian 12 (Bookworm) non-free [arm64]",
+        "url": "https://deb.debian.org/debian/dists/bookworm/non-free/binary-arm64/Packages.gz",
+        "distro": "bookworm",
+        "component": "non-free",
+        "arch": "arm64",
+    },
+    {
+        "id": "ubuntu-jammy-security-arm64",
+        "label": "Ubuntu 22.04 Security [arm64]",
+        "url": "https://ports.ubuntu.com/ubuntu-ports/dists/jammy-security/main/binary-arm64/Packages.gz",
+        "distro": "jammy",
+        "component": "main",
+        "arch": "arm64",
+        "security": True,
+    },
+    {
+        "id": "ubuntu-jammy-security-universe-arm64",
+        "label": "Ubuntu 22.04 Security (universe) [arm64]",
+        "url": "https://ports.ubuntu.com/ubuntu-ports/dists/jammy-security/universe/binary-arm64/Packages.gz",
+        "distro": "jammy",
+        "component": "universe",
+        "arch": "arm64",
+        "security": True,
+    },
+    {
+        "id": "ubuntu-noble-security-arm64",
+        "label": "Ubuntu 24.04 Security [arm64]",
+        "url": "https://ports.ubuntu.com/ubuntu-ports/dists/noble-security/main/binary-arm64/Packages.gz",
+        "distro": "noble",
+        "component": "main",
+        "arch": "arm64",
+        "security": True,
+    },
+    {
+        "id": "ubuntu-noble-security-universe-arm64",
+        "label": "Ubuntu 24.04 Security (universe) [arm64]",
+        "url": "https://ports.ubuntu.com/ubuntu-ports/dists/noble-security/universe/binary-arm64/Packages.gz",
+        "distro": "noble",
+        "component": "universe",
+        "arch": "arm64",
+        "security": True,
+    },
+    {
+        "id": "ubuntu-focal-security-arm64",
+        "label": "Ubuntu 20.04 Security [arm64]",
+        "url": "https://ports.ubuntu.com/ubuntu-ports/dists/focal-security/main/binary-arm64/Packages.gz",
+        "distro": "focal",
+        "component": "main",
+        "arch": "arm64",
+        "security": True,
+    },
+    {
+        "id": "ubuntu-focal-security-universe-arm64",
+        "label": "Ubuntu 20.04 Security (universe) [arm64]",
+        "url": "https://ports.ubuntu.com/ubuntu-ports/dists/focal-security/universe/binary-arm64/Packages.gz",
+        "distro": "focal",
+        "component": "universe",
+        "arch": "arm64",
+        "security": True,
+    },
+    {
+        "id": "debian-bookworm-security-arm64",
+        "label": "Debian 12 Security [arm64]",
+        "url": "https://security.debian.org/debian-security/dists/bookworm-security/main/binary-arm64/Packages.xz",
+        "distro": "bookworm",
+        "component": "main",
+        "arch": "arm64",
+        "security": True,
+    },
+    {
+        "id": "debian-bookworm-updates-arm64",
+        "label": "Debian 12 Updates [arm64]",
+        "url": "https://deb.debian.org/debian/dists/bookworm-updates/main/binary-arm64/Packages.xz",
+        "distro": "bookworm-updates",
+        "component": "main",
+        "arch": "arm64",
+        "security": True,
+    },
 ]
 
 
@@ -608,11 +814,14 @@ def list_packages_by_source(source_id: str, limit: int = 1000, offset: int = 0) 
     return [{**dict(r), "format": "deb"} for r in rows]
 
 
-def search_packages(query: str, limit: int = 30, source_id: str = None, distro: str = None) -> list[dict]:
+def search_packages(query: str, limit: int = 30, source_id: str = None, distro: str = None, arch: str = None) -> list[dict]:
     """
     Recherche des paquets dans l'index local par nom ou description.
     Prioritise les correspondances exactes sur le nom.
     distro : filtrer par codename (ex: "jammy" couvre jammy, jammy-updates, jammy-security).
+    arch : filtrer par architecture exacte (ex: "arm64") — sans ce filtre,
+    résultats des deux architectures mélangés, triés amd64 d'abord (voir
+    get_package_info() pour le raisonnement complet sur cette préférence).
     """
     query = query.strip()
     if not query:
@@ -626,12 +835,14 @@ def search_packages(query: str, limit: int = 30, source_id: str = None, distro: 
             WHERE (LOWER(name) LIKE LOWER(:q_wild) OR LOWER(description) LIKE LOWER(:q_wild))
             AND (:source_id IS NULL OR source_id = :source_id)
             AND (:distro IS NULL OR distro LIKE :distro_pattern)
+            AND (:arch IS NULL OR arch = :arch)
             ORDER BY
                 CASE
                     WHEN name = :q           THEN 0
                     WHEN LOWER(name) LIKE LOWER(:q_prefix) THEN 1
                     ELSE                          2
                 END,
+                CASE WHEN arch = 'amd64' THEN 0 ELSE 1 END,
                 name ASC
             LIMIT :limit
         """), {
@@ -642,12 +853,13 @@ def search_packages(query: str, limit: int = 30, source_id: str = None, distro: 
             "limit": limit,
             "distro": distro,
             "distro_pattern": f"{distro}%" if distro else None,
+            "arch": arch,
         }).mappings().fetchall()
 
     return [{**dict(r), "format": "deb"} for r in rows]
 
 
-def _find_by_provides(conn, name: str, source_id: str = None):
+def _find_by_provides(conn, name: str, source_id: str = None, arch: str = None):
     """
     Cherche un paquet qui déclare `name` dans son champ Provides.
     Utilise quatre patterns pour éviter les faux positifs avec LIKE :
@@ -670,50 +882,67 @@ def _find_by_provides(conn, name: str, source_id: str = None):
             SELECT * FROM packages
             WHERE LOWER(provides) LIKE LOWER(:pat)
             AND (:source_id IS NULL OR source_id = :source_id)
+            AND (:arch IS NULL OR arch = :arch)
+            ORDER BY CASE WHEN arch = 'amd64' THEN 0 ELSE 1 END
             LIMIT 1
-        """), {"pat": pat, "source_id": source_id}).mappings().fetchone()
+        """), {"pat": pat, "source_id": source_id, "arch": arch}).mappings().fetchone()
         if row:
             return row
     return None
 
 
-def get_package_info(name: str, source_id: str = None) -> dict | None:
+def get_package_info(name: str, source_id: str = None, arch: str = None) -> dict | None:
     """
     Retourne les infos complètes d'un paquet depuis l'index.
     Cherche d'abord par nom exact, puis dans le champ Provides
     pour les paquets virtuels (ex: perlapi-5.34.0, libssl).
+
+    arch : filtrer par architecture exacte (ex: "arm64", "amd64"). Depuis
+    l'ajout des sources arm64 (mêmes `distro` que leurs équivalents amd64,
+    par cohérence avec le modèle APT réel où une distribution contient les
+    deux architectures), un même (name, distro) peut désormais correspondre
+    à plusieurs lignes — sans filtre explicite, on préfère amd64 par défaut
+    (ORDER BY) pour ne rien changer au comportement des appelants existants,
+    qui n'ont jamais eu affaire qu'à des données amd64 jusqu'ici.
     """
     with db_conn() as conn:
         row = conn.execute(text("""
             SELECT * FROM packages
             WHERE name = :name
             AND (:source_id IS NULL OR source_id = :source_id)
+            AND (:arch IS NULL OR arch = :arch)
+            ORDER BY CASE WHEN arch = 'amd64' THEN 0 ELSE 1 END
             LIMIT 1
-        """), {"name": name, "source_id": source_id}).mappings().fetchone()
+        """), {"name": name, "source_id": source_id, "arch": arch}).mappings().fetchone()
         if not row:
-            row = _find_by_provides(conn, name, source_id)
+            row = _find_by_provides(conn, name, source_id, arch)
     return {**dict(row), "format": "deb"} if row else None
 
 
-def get_package_info_for_distro(name: str, distro: str | None) -> dict | None:
+def get_package_info_for_distro(name: str, distro: str | None, arch: str | None = None) -> dict | None:
     """
     Comme get_package_info(), mais privilégie la distribution `distro`
     (ex: "jammy") : parmi toutes les sources indexées pour cette distro
     (main, universe, security, ...), retourne la première correspondance.
     Fallback sur get_package_info(name) si `distro` est absent/None ou si
     aucune ligne ne correspond à cette distro.
+
+    arch : voir get_package_info() — même filtre optionnel avec préférence
+    amd64 par défaut, pour départager amd64/arm64 au sein d'une même distro.
     """
     if distro:
         with db_conn() as conn:
             row = conn.execute(text("""
                 SELECT * FROM packages
                 WHERE name = :name AND distro = :distro
+                AND (:arch IS NULL OR arch = :arch)
+                ORDER BY CASE WHEN arch = 'amd64' THEN 0 ELSE 1 END
                 LIMIT 1
-            """), {"name": name, "distro": distro}).mappings().fetchone()
+            """), {"name": name, "distro": distro, "arch": arch}).mappings().fetchone()
         if row:
             return {**dict(row), "format": "deb"}
 
-    return get_package_info(name)
+    return get_package_info(name, arch=arch)
 
 
 def is_indexed() -> bool:

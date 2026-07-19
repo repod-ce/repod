@@ -31,7 +31,7 @@ def _get_repo_base_url(repomd_url: str) -> str:
     return repomd_url.rsplit("/repodata/", 1)[0]
 
 
-def _download_rpm(pkg_name: str, tmp_dir: str, distribution: str = "") -> tuple[Path | None, str, str | None]:
+def _download_rpm(pkg_name: str, tmp_dir: str, distribution: str = "", arch: str | None = None) -> tuple[Path | None, str, str | None]:
     """
     Télécharge un .rpm depuis l'index SQLite local.
     Retourne (chemin_fichier, source_label, sha256_attendu) ou (None, message_erreur, None).
@@ -40,6 +40,12 @@ def _download_rpm(pkg_name: str, tmp_dir: str, distribution: str = "") -> tuple[
     correspondantes (almalinux9-baseos, almalinux9-appstream…) avant de se rabattre
     sur toutes les sources. Evite de retourner un package Tumbleweed incompatible
     quand un package natif EL9 existe.
+
+    arch (ex: "aarch64") départage entre architectures d'une même distro —
+    depuis l'ajout des sources aarch64 (même `distro` que leur équivalent
+    x86_64), un (name, source_prefix) peut désormais correspondre à plusieurs
+    lignes ; sans ce filtre, x86_64 reste préféré par défaut (voir
+    package_index_rpm.get_package_info()).
     """
     # Importer DIRECTEMENT depuis package_index_rpm (pas le dispatcher combiné)
     # En mode REPO_FORMAT=all, le dispatcher cherche APT en premier → renvoie un résultat
@@ -50,11 +56,11 @@ def _download_rpm(pkg_name: str, tmp_dir: str, distribution: str = "") -> tuple[
     # 1. Essayer d'abord la source native de la distribution cible
     row = None
     if distribution:
-        row = _rpm_get_info(pkg_name, source_prefix=distribution)
+        row = _rpm_get_info(pkg_name, source_prefix=distribution, arch=arch)
 
     # 2. Fallback : n'importe quelle source
     if not row:
-        row = _rpm_get_info(pkg_name)
+        row = _rpm_get_info(pkg_name, arch=arch)
 
     if not row or not row.get("rpm_url"):
         return None, f"'{pkg_name}' introuvable dans l'index — lancez une synchronisation", None
@@ -211,7 +217,7 @@ def _import_one_locked(pkg_row: dict, distribution: str, user: str, group: str |
                 "message": "Déjà dans le repo", "steps": []}
 
     with tempfile.TemporaryDirectory() as tmp_dir:
-        rpm_path, source_label, expected_sha256 = _download_rpm(pkg_name, tmp_dir, distribution=distribution)
+        rpm_path, source_label, expected_sha256 = _download_rpm(pkg_name, tmp_dir, distribution=distribution, arch=pkg_row.get("arch"))
         if rpm_path is None:
             # Distinguer "absent de l'index" (skip) vs "erreur de téléchargement" (error)
             if "introuvable dans l'index" in source_label:
@@ -292,6 +298,7 @@ def import_package(
     distribution: str,
     current_user: str = "system",
     deps_info: dict | None = None,
+    arch: str | None = None,
 ) -> dict:
     """
     Importe un paquet RPM et ses dépendances (transitives) depuis l'index.
@@ -300,6 +307,14 @@ def import_package(
     `deps_info` : résultat déjà calculé de resolve_deps_online(), pour éviter
     de refaire toute la résolution transitive une seconde fois quand l'appelant
     (import_package_stream()) l'a déjà fait pour l'affichage.
+
+    `arch` (ex: "aarch64") : bug réel trouvé en vérifiant le support arm64 en
+    direct — sans le propager explicitement ici, `import_one({"name":
+    pkg_name}, ...)` construisait un pkg_row SANS clé "arch", et
+    _download_rpm() (via _import_one_locked()) retombait alors toujours sur
+    x86_64 par défaut, quelle que soit l'architecture demandée par
+    l'utilisateur. Une seule arch par session d'import (pas par paquet) —
+    cohérent avec APT/APK où l'utilisateur cible une seule architecture à la fois.
     """
     results = []
     errors = []
@@ -323,7 +338,7 @@ def import_package(
     pending_review: list[dict] = []
 
     for pkg_name in packages_to_get:
-        result = import_one({"name": pkg_name}, distribution, current_user)
+        result = import_one({"name": pkg_name, "arch": arch}, distribution, current_user)
         status = result["status"]
         if status == "skipped":
             not_indexed.append(pkg_name)
@@ -376,12 +391,20 @@ def import_package_stream(
     user: str,
     group: str | None = None,
     distribution: str | None = None,
+    arch: str | None = None,
 ) -> Generator[str, None, None]:
     """
     Interface streaming SSE compatible avec import_router.py (identique à l'APT).
     Enveloppe import_package() et génère des messages SSE en temps réel.
 
     distribution est obligatoire en mode RPM (pas d'auto-détection).
+
+    `arch` (ex: "aarch64") : accepté pour une interface uniforme entre les
+    trois formats — utilisé par _download_rpm() via import_one() (arch
+    dérivée du pkg_row déjà résolu). NE départage PAS encore la résolution
+    de dépendances elle-même : resolve_deps_online() ignore déjà `distro`/
+    `distribution` (limitation préexistante, non introduite ici, hors
+    périmètre du support arm64 — voir le suivi flagué séparément).
     """
     from services.format_router import DEFAULT_DISTRIBUTION
 
@@ -440,7 +463,7 @@ def import_package_stream(
     # Téléchargement et import — réutilise deps_info déjà calculé (évite de
     # refaire toute la résolution transitive une seconde fois).
     yield emit("Téléchargement et import depuis internet...")
-    result = import_package(package_name, target_distrib, current_user=user, deps_info=deps_info)
+    result = import_package(package_name, target_distrib, current_user=user, deps_info=deps_info, arch=arch)
 
     if not result["success"]:
         yield emit(f"Erreur : {result.get('error', 'Inconnue')}", "error")

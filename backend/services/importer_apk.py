@@ -19,22 +19,33 @@ def _emit(msg: str, level: str = "info") -> str:
     return f"data: {level}|{msg}\n\n"
 
 
-def _get_package_info_apk(pkg_name: str, distro: str | None = None):
+def _get_package_info_apk(pkg_name: str, distro: str | None = None, arch: str | None = None):
     """
     Cherche un paquet APK dans l'index SQLite.
     Si distro est fourni (ex: 'alpine3.21'), filtre sur cette distro en priorité.
+
+    `arch` (ex: "aarch64") départage entre architectures d'une même distro —
+    depuis l'ajout des sources aarch64 (même `distro` que leur équivalent
+    x86_64), `matching` peut désormais contenir des sources des deux
+    architectures ; sans filtre explicite, x86_64 reste préféré par défaut
+    car ses sources sont listées en premier dans DEFAULT_SOURCES (le
+    `for source in matching` retourne sur la première trouvée) —
+    comportement inchangé pour les appelants existants.
     """
     from services.package_index_apk import DEFAULT_SOURCES, get_package_info
 
     if distro:
-        matching = [s for s in DEFAULT_SOURCES if s.get("distro") == distro]
+        matching = [
+            s for s in DEFAULT_SOURCES
+            if s.get("distro") == distro and (arch is None or s.get("arch") == arch)
+        ]
         for source in matching:
-            row = get_package_info(pkg_name, source_id=source["id"])
+            row = get_package_info(pkg_name, source_id=source["id"], arch=arch)
             if row:
                 return row, source
 
-    # Fallback sans filtre
-    row = get_package_info(pkg_name)
+    # Fallback sans filtre de distro (mais respecte arch si fourni)
+    row = get_package_info(pkg_name, arch=arch)
     if not row:
         return None, None
     source = next((s for s in DEFAULT_SOURCES if s["id"] == row["source_id"]), None)
@@ -51,12 +62,12 @@ def _build_download_url(row: dict, source: dict) -> str:
     return f"{base_url}/{filename}"
 
 
-def _download_apk(pkg_name: str, tmp_dir: str, distro: str | None = None) -> tuple:
+def _download_apk(pkg_name: str, tmp_dir: str, distro: str | None = None, arch: str | None = None) -> tuple:
     """
     Télécharge un .apk depuis l'index SQLite local.
     Retourne (chemin_fichier, source_label) ou (None, message_erreur).
     """
-    row, source = _get_package_info_apk(pkg_name, distro)
+    row, source = _get_package_info_apk(pkg_name, distro, arch=arch)
     if not row:
         return None, f"'{pkg_name}' introuvable dans l'index APK — lancez une synchronisation", None
     if not source:
@@ -83,7 +94,7 @@ def _download_apk(pkg_name: str, tmp_dir: str, distro: str | None = None) -> tup
     return dest, source.get("label", source["id"]), apk_checksum
 
 
-def resolve_deps_online(package_name: str, distro: str | None = None, max_depth: int = 8) -> dict:
+def resolve_deps_online(package_name: str, distro: str | None = None, arch: str | None = None, max_depth: int = 8) -> dict:
     """
     Résout l'arbre COMPLET (transitif) des dépendances d'un paquet APK,
     jusqu'à max_depth niveaux — même patron que importer_apt.py.
@@ -100,7 +111,7 @@ def resolve_deps_online(package_name: str, distro: str | None = None, max_depth:
     """
     from services.package_index_apk import get_package_info, resolve_provide_to_package
 
-    root_row, _ = _get_package_info_apk(package_name, distro)
+    root_row, _ = _get_package_info_apk(package_name, distro, arch=arch)
     if not root_row:
         return {
             "success": False,
@@ -142,7 +153,7 @@ def resolve_deps_online(package_name: str, distro: str | None = None, max_depth:
                 if real_name == package_name or real_name in resolved_names:
                     continue
                 resolved_names.add(real_name)
-                dep_row, _ = _get_package_info_apk(real_name, distro)
+                dep_row, _ = _get_package_info_apk(real_name, distro, arch=arch)
                 if dep_row:
                     next_frontier.append(dep_row)
         frontier_rows = next_frontier
@@ -150,7 +161,7 @@ def resolve_deps_online(package_name: str, distro: str | None = None, max_depth:
     packages = []
     for dep_name in sorted(resolved_names):
         in_repo = any(POOL_DIR.glob(f"{dep_name}-*.apk"))
-        dep_row = get_package_info(dep_name)
+        dep_row = get_package_info(dep_name, arch=arch)
         packages.append({
             "name":            dep_name,
             "version":         dep_row["version"] if dep_row else None,
@@ -216,7 +227,7 @@ def _import_one_locked(pkg_row: dict, distribution: str, user: str, group: str |
                 "message": "déjà présent dans le dépôt", "steps": []}
 
     with tempfile.TemporaryDirectory() as tmp_dir:
-        apk_path, label_or_err, apk_checksum = _download_apk(pkg_name, tmp_dir, distro=distribution)
+        apk_path, label_or_err, apk_checksum = _download_apk(pkg_name, tmp_dir, distro=distribution, arch=pkg_row.get("arch"))
         if apk_path is None:
             # "introuvable dans l'index" → skip (dep système/non-indexée), autre → erreur
             if "introuvable dans l'index" in label_or_err:
@@ -287,21 +298,23 @@ def import_package_stream(
     user: str,
     group: str | None = None,
     distribution: str | None = None,
+    arch: str | None = None,
 ) -> Generator[str, None, None]:
     """
     Importe un paquet APK et ses dépendances directes avec pipeline complet.
     Générateur SSE : format `data: level|message\\n\\n` (compatible LogLine.js).
     NE PAS émettre `done|DONE` ici — le router l'ajoute après le générateur.
-    """
-    from services.package_index_apk import get_package_info as index_get_info
 
+    `arch` (ex: "aarch64") départage entre architectures d'une même distro —
+    voir _get_package_info_apk()/resolve_deps_online() pour le raisonnement.
+    """
     try:
         yield _emit(f"Démarrage de l'import APK de '{package_name}'...")
         yield _emit(f"Distribution cible : {distribution or 'auto-détection'}")
 
         # 1. Résolution des dépendances (transitive — voir resolve_deps_online())
         yield _emit("Résolution de l'arbre de dépendances (transitif)...")
-        deps_info = resolve_deps_online(package_name, distro=distribution)
+        deps_info = resolve_deps_online(package_name, distro=distribution, arch=arch)
         if not deps_info["success"] and "introuvable dans l'index" in deps_info.get("error", ""):
             # Une seule resynchronisation automatique par appel — même
             # raisonnement que importer_apt.py/importer_rpm.py. Ne touche pas
@@ -314,7 +327,7 @@ def import_package_stream(
                 _apk_sync_all()
             except Exception:
                 pass
-            deps_info = resolve_deps_online(package_name, distro=distribution)
+            deps_info = resolve_deps_online(package_name, distro=distribution, arch=arch)
             if deps_info["success"]:
                 yield _emit("Synchronisation terminée, reprise de l'import.", "success")
         if not deps_info["success"]:
@@ -351,7 +364,14 @@ def import_package_stream(
                 skipped += 1
                 continue
 
-            pkg_row = index_get_info(pkg_name, source_id=None)
+            # _get_package_info_apk (pas le index_get_info brut) : scope par
+            # distro ET arch — sans ça, un import ciblant aarch64 résolvait
+            # correctement l'arbre de dépendances en aarch64 mais retéléchargeait
+            # silencieusement la version x86_64 ici (bug réel trouvé en direct
+            # lors de la vérification de ce correctif : le paquet importé
+            # portait bien le tag aarch64 pour les DEPS mais pas pour le
+            # paquet racine, cette ligne étant restée arch-blind).
+            pkg_row, _ = _get_package_info_apk(pkg_name, distribution, arch=arch)
             if not pkg_row:
                 yield _emit(
                     f"  [WARN] {pkg_name} — absent de l'index prive"

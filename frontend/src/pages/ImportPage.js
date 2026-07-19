@@ -315,6 +315,32 @@ function DistSelector({ distribution, onChange }) {
   );
 }
 
+// Paires d'architectures par format — noms différents selon la convention
+// de chaque écosystème (Debian/Ubuntu utilisent amd64/arm64, RHEL/openSUSE/
+// Alpine utilisent x86_64/aarch64 pour les mêmes plateformes physiques).
+const ARCH_PAIRS = {
+  deb: [{ value: null, label: "amd64" }, { value: "arm64", label: "arm64" }],
+  rpm: [{ value: null, label: "x86_64" }, { value: "aarch64", label: "aarch64" }],
+  apk: [{ value: null, label: "x86_64" }, { value: "aarch64", label: "aarch64" }],
+};
+
+function ArchSelector({ format, arch, onChange }) {
+  const pairs = ARCH_PAIRS[format] || ARCH_PAIRS.deb;
+  return (
+    <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-2">
+      <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">Architecture cible</p>
+      <div className="flex gap-1.5">
+        {pairs.map(({ value, label }) => (
+          <button key={label} type="button" onClick={() => onChange(value)}
+            className={`px-3 py-1 rounded text-xs font-medium border transition-colors ${
+              arch === value ? "bg-gray-900 text-white border-gray-900" : "text-gray-500 border-gray-200 hover:border-gray-400 hover:text-gray-900"
+            }`}>{label}</button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function SearchImportTab() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState([]);
@@ -323,6 +349,7 @@ function SearchImportTab() {
   const [deps, setDeps] = useState(null);
   const [resolvingDeps, setResolvingDeps] = useState(false);
   const [distribution, setDistribution] = useState("jammy");
+  const [arch, setArch] = useState(null);
   const { logs, running, done, startWithBody } = useSSEStream();
   const logsRef = useRef(null);
 
@@ -338,7 +365,7 @@ function SearchImportTab() {
 
   const handleSetDistribution = (codename) => {
     const newFmt = DISTRIBUTIONS.find(d => d.codename === codename)?.format;
-    if (newFmt !== currentFormat) { setResults([]); setSelected(null); setDeps(null); }
+    if (newFmt !== currentFormat) { setResults([]); setSelected(null); setDeps(null); setArch(null); }
     setDistribution(codename);
   };
 
@@ -349,7 +376,7 @@ function SearchImportTab() {
     setSelected(null);
     setDeps(null);
     try {
-      const data = await searchImportPackages(query.trim(), 60, null, currentFormat, distribution);
+      const data = await searchImportPackages(query.trim(), 60, null, currentFormat, distribution, arch);
       setResults(data.results || []);
       if ((data.results || []).length === 0) toast(`Aucun résultat ${currentFormat.toUpperCase()} trouvé`);
     } catch (err) {
@@ -374,7 +401,7 @@ function SearchImportTab() {
       // guessed, pas l'état distribution — setDistribution() ci-dessus est
       // asynchrone (React ne l'applique qu'au prochain rendu), donc lire
       // `distribution` ici renverrait encore l'ancienne valeur.
-      const data = await resolveImportDeps(pkg.name, guessed);
+      const data = await resolveImportDeps(pkg.name, guessed, arch);
       setDeps(data);
     } catch {
       setDeps(null);
@@ -385,7 +412,7 @@ function SearchImportTab() {
 
   const handleImport = () => {
     if (!selected) return;
-    startWithBody(`${API_URL}/import/fetch`, { package: selected.name, distribution });
+    startWithBody(`${API_URL}/import/fetch`, { package: selected.name, distribution, arch });
   };
 
   const fmtMeta = FMT_META[currentFormat] || FMT_META.deb;
@@ -394,6 +421,7 @@ function SearchImportTab() {
     <div className="space-y-4">
       {/* 1. Distribution d'abord — scope la recherche */}
       <DistSelector distribution={distribution} onChange={handleSetDistribution} />
+      <ArchSelector format={currentFormat} arch={arch} onChange={setArch} />
 
       {/* 2. Barre de recherche scopée au format sélectionné */}
       <form onSubmit={handleSearch} className="flex gap-3">
@@ -514,6 +542,7 @@ function SearchImportTab() {
 function BatchImportTab() {
   const [input, setInput] = useState("");
   const [distribution, setDistribution] = useState("jammy");
+  const [arch, setArch] = useState(null);
   const { logs, running, done, startWithBody } = useSSEStream();
   const logsRef = useRef(null);
 
@@ -536,7 +565,7 @@ function BatchImportTab() {
       toast.error("Maximum 50 paquets par batch");
       return;
     }
-    startWithBody(`${API_URL}/import/batch`, { packages, distribution });
+    startWithBody(`${API_URL}/import/batch`, { packages, distribution, arch });
   };
 
   return (
@@ -584,6 +613,12 @@ function BatchImportTab() {
           </div>
         </div>
       </div>
+
+      <ArchSelector
+        format={DISTRIBUTIONS.find((d) => d.codename === distribution)?.format || "deb"}
+        arch={arch}
+        onChange={setArch}
+      />
 
       <div className="space-y-3">
         <label className="block text-sm font-medium text-gray-700">

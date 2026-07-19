@@ -182,6 +182,15 @@ def _get_gpg_key_id(gnupg_home: str) -> str | None:
     return None
 
 
+# Architectures que reprepro doit accepter pour chaque distribution APT.
+# "arm64" a été ajouté après le lancement initial (amd64 seul) — voir
+# _distributions_conf_is_complete() pour comment un déploiement existant,
+# déjà initialisé avec "Architectures: amd64" uniquement, se répare tout
+# seul au prochain redémarrage plutôt que de rejeter silencieusement tout
+# .deb arm64 pour toujours.
+_REQUIRED_ARCHITECTURES = ["amd64", "arm64"]
+
+
 def _write_distributions_conf(conf_dir: Path, gnupg_home: str, gpg_key_id: str | None):
     conf_dir.mkdir(parents=True, exist_ok=True)
     blocks = []
@@ -193,7 +202,7 @@ def _write_distributions_conf(conf_dir: Path, gnupg_home: str, gpg_key_id: str |
             f"Origin: Repod\n"
             f"Label: {meta['label']}\n"
             f"Codename: {codename}\n"
-            f"Architectures: amd64\n"
+            f"Architectures: {' '.join(_REQUIRED_ARCHITECTURES)}\n"
             f"Components: main\n"
             f"Description: Repod Enterprise — {meta['label']}\n"
             f"Contents:\n"
@@ -206,8 +215,16 @@ def _write_distributions_conf(conf_dir: Path, gnupg_home: str, gpg_key_id: str |
 
 def _distributions_conf_is_complete(conf_dir: Path) -> bool:
     """
-    Vérifie que conf/distributions contient bien toutes les distributions requises.
-    Retourne False si le fichier est absent, vide, ou s'il manque au moins une distribution.
+    Vérifie que conf/distributions contient bien toutes les distributions
+    requises, ET que chacune liste bien toutes les architectures requises
+    (_REQUIRED_ARCHITECTURES). Retourne False si le fichier est absent, vide,
+    s'il manque au moins une distribution, ou si une distribution présente
+    ne liste pas encore toutes les architectures requises — ce second cas
+    est ce qui permet à un déploiement existant (initialisé avant l'ajout du
+    support arm64, avec "Architectures: amd64" seul) de se régénérer
+    automatiquement au prochain redémarrage plutôt que de rester bloqué en
+    amd64-only indéfiniment (auto_init_distributions() ne vérifiait jusqu'ici
+    que la présence du codename, jamais le contenu de sa ligne Architectures).
     """
     conf_file = conf_dir / "distributions"
     if not conf_file.exists():
@@ -216,11 +233,16 @@ def _distributions_conf_is_complete(conf_dir: Path) -> bool:
         content = conf_file.read_text()
         # Seulement les distributions APT (pas les Alpine qui ne passent pas par reprepro)
         required = {k for k, v in _DIST_META.items() if v.get("pkg_type") != "apk"}
-        present  = {
-            line.split(":", 1)[1].strip()
-            for line in content.splitlines()
-            if line.lower().startswith("codename:")
-        }
+
+        architectures_by_codename: dict[str, set[str]] = {}
+        current_codename = None
+        for line in content.splitlines():
+            if line.lower().startswith("codename:"):
+                current_codename = line.split(":", 1)[1].strip()
+            elif line.lower().startswith("architectures:") and current_codename:
+                architectures_by_codename[current_codename] = set(line.split(":", 1)[1].split())
+
+        present = set(architectures_by_codename.keys())
         missing = required - present
         if missing:
             import logging
@@ -228,6 +250,19 @@ def _distributions_conf_is_complete(conf_dir: Path) -> bool:
                 f"[auto-init] conf/distributions incomplet — distributions manquantes : {missing}"
             )
             return False
+
+        required_arch_set = set(_REQUIRED_ARCHITECTURES)
+        incomplete_arch = {
+            cn for cn in present
+            if cn in required and not required_arch_set.issubset(architectures_by_codename[cn])
+        }
+        if incomplete_arch:
+            import logging
+            logging.getLogger("distributions.auto_init").warning(
+                f"[auto-init] conf/distributions incomplet — architectures manquantes sur : {incomplete_arch}"
+            )
+            return False
+
         return True
     except Exception:
         return False

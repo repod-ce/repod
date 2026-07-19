@@ -255,13 +255,17 @@ elif _is_apk():
         return False, "add_rpm_to_distrib non disponible en mode APK"
 
     def remove_package(name: str) -> tuple[bool, str]:                # noqa: E302
-        """Supprime un paquet de toutes les distributions APK."""
+        """Supprime un paquet de toutes les distributions APK, sur toutes
+        les architectures (x86_64 ET aarch64) — un paquet ajouté via
+        add_package() avec arch dérivée du fichier (voir distributions_apk.py)
+        peut se trouver dans n'importe laquelle, jamais seulement x86_64."""
         from services.distributions_apk import APK_DISTRIBUTIONS, remove_package as _rm
         errors = []
         for dist in APK_DISTRIBUTIONS:
-            ok, msg = _rm(name, "", dist["codename"])
-            if not ok:
-                errors.append(msg)
+            for arch in dist["arch"]:
+                ok, msg = _rm(name, "", dist["codename"], arch=arch)
+                if not ok:
+                    errors.append(msg)
         if errors:
             return False, " | ".join(errors)
         return True, f"{name} supprimé des distributions APK"

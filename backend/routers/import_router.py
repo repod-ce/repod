@@ -62,12 +62,16 @@ def search(
     source_id: str = Query(None),
     format: str = Query(None, description="Filtre format : deb | rpm | apk"),
     distro: str = Query(None, description="Filtre distribution : jammy, almalinux9, alpine3.21…"),
+    arch: str = Query(None, description="Filtre architecture : amd64, arm64, x86_64, aarch64…"),
     current_user: str = Depends(get_current_user),
 ):
     """
     Recherche dans l'index local (Packages.gz mis en cache).
     Ne nécessite pas de connexion internet au moment de la recherche.
-    `format` filtre par type de paquet ; `distro` filtre par distribution cible.
+    `format` filtre par type de paquet ; `distro` filtre par distribution cible ;
+    `arch` filtre par architecture (sans lui, amd64/x86_64 est préféré par
+    défaut quand une distro contient plusieurs architectures — voir
+    package_index_apt.py:get_package_info() pour le raisonnement complet).
     """
     if not is_indexed():
         raise HTTPException(
@@ -75,7 +79,7 @@ def search(
             detail="L'index local est vide. Lancez une synchronisation d'abord."
         )
 
-    results = search_packages(q, limit=limit, source_id=source_id, distro=distro)
+    results = search_packages(q, limit=limit, source_id=source_id, distro=distro, arch=arch)
 
     # Filtre côté serveur par format si spécifié
     if format in ("deb", "rpm", "apk"):
@@ -90,6 +94,7 @@ def search(
 def resolve(
     package_name: str,
     distro: str | None = None,
+    arch: str | None = None,
     current_user: str = Depends(get_current_user),
 ):
     """
@@ -99,8 +104,11 @@ def resolve(
     `distro` (ex: "jammy") scope la résolution à la distribution ciblée —
     voir resolve_deps_online() : sans elle, un nom de paquet présent dans
     plusieurs distros/formats peut résoudre vers la mauvaise ligne d'index.
+    `arch` (ex: "arm64") départage entre architectures d'une même distro —
+    support complet côté APT/APK, partiel côté RPM (voir
+    services/importer_rpm.py:resolve_deps_online()).
     """
-    result = resolve_deps_online(package_name, distro=distro)
+    result = resolve_deps_online(package_name, distro=distro, arch=arch)
     if not result["success"]:
         raise HTTPException(status_code=404, detail=result["error"])
     return result
@@ -112,12 +120,14 @@ class ImportRequest(BaseModel):
     package: str
     group: str | None = None         # groupe d'import cible (défaut = nom du paquet)
     distribution: str | None = None  # distribution cible (défaut = auto-détection depuis source)
+    arch: str | None = None          # architecture cible (défaut = amd64/x86_64 préféré)
 
 
 class BatchImportRequest(BaseModel):
     packages: list[str]
     group: str | None = None         # tous les paquets du batch vont dans ce groupe
     distribution: str | None = None  # distribution cible pour tous les paquets
+    arch: str | None = None          # architecture cible pour tous les paquets
 
 
 @router.post("/fetch")
@@ -142,6 +152,7 @@ def fetch_package(
             body.package, current_user,
             group=body.group,
             distribution=body.distribution,
+            arch=body.arch,
         ):
             yield chunk
         yield "data: done|DONE\n\n"
@@ -180,6 +191,7 @@ def batch_import(
                 pkg, current_user,
                 group=body.group,
                 distribution=body.distribution,
+                arch=body.arch,
             ):
                 yield chunk
         yield "data: done|DONE\n\n"

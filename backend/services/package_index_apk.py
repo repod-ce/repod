@@ -146,6 +146,59 @@ DEFAULT_SOURCES = [
         "format": "apk",
         "security": False,
     },
+    # ── aarch64 ────────────────────────────────────────────────────────────────
+    # Toutes les URLs ci-dessous ont été vérifiées en direct (HTTP 200). Alpine
+    # signe aarch64 avec une clé RSA DIFFÉRENTE de x86_64 (confirmé en direct
+    # sur les 8 sources : alpine-devel@...-616ae350.rsa.pub, pas -6165ee59) —
+    # voir scripts/gen-apk-keys.sh, cette seconde clé y est déjà déclarée.
+    {
+        "id": "alpine3.21-main-aarch64",
+        "label": "Alpine 3.21 — main [aarch64]",
+        "apkindex_url": f"{_ALPINE_CDN}/v3.21/main/aarch64/APKINDEX.tar.gz",
+        "distro": "alpine3.21", "arch": "aarch64", "component": "main", "format": "apk", "security": False,
+    },
+    {
+        "id": "alpine3.21-community-aarch64",
+        "label": "Alpine 3.21 — community [aarch64]",
+        "apkindex_url": f"{_ALPINE_CDN}/v3.21/community/aarch64/APKINDEX.tar.gz",
+        "distro": "alpine3.21", "arch": "aarch64", "component": "community", "format": "apk", "security": False,
+    },
+    {
+        "id": "alpine3.20-main-aarch64",
+        "label": "Alpine 3.20 — main [aarch64]",
+        "apkindex_url": f"{_ALPINE_CDN}/v3.20/main/aarch64/APKINDEX.tar.gz",
+        "distro": "alpine3.20", "arch": "aarch64", "component": "main", "format": "apk", "security": False,
+    },
+    {
+        "id": "alpine3.20-community-aarch64",
+        "label": "Alpine 3.20 — community [aarch64]",
+        "apkindex_url": f"{_ALPINE_CDN}/v3.20/community/aarch64/APKINDEX.tar.gz",
+        "distro": "alpine3.20", "arch": "aarch64", "component": "community", "format": "apk", "security": False,
+    },
+    {
+        "id": "alpine3.19-main-aarch64",
+        "label": "Alpine 3.19 — main [aarch64]",
+        "apkindex_url": f"{_ALPINE_CDN}/v3.19/main/aarch64/APKINDEX.tar.gz",
+        "distro": "alpine3.19", "arch": "aarch64", "component": "main", "format": "apk", "security": False,
+    },
+    {
+        "id": "alpine3.19-community-aarch64",
+        "label": "Alpine 3.19 — community [aarch64]",
+        "apkindex_url": f"{_ALPINE_CDN}/v3.19/community/aarch64/APKINDEX.tar.gz",
+        "distro": "alpine3.19", "arch": "aarch64", "component": "community", "format": "apk", "security": False,
+    },
+    {
+        "id": "alpine3.18-main-aarch64",
+        "label": "Alpine 3.18 — main [aarch64]",
+        "apkindex_url": f"{_ALPINE_CDN}/v3.18/main/aarch64/APKINDEX.tar.gz",
+        "distro": "alpine3.18", "arch": "aarch64", "component": "main", "format": "apk", "security": False,
+    },
+    {
+        "id": "alpine3.18-community-aarch64",
+        "label": "Alpine 3.18 — community [aarch64]",
+        "apkindex_url": f"{_ALPINE_CDN}/v3.18/community/aarch64/APKINDEX.tar.gz",
+        "distro": "alpine3.18", "arch": "aarch64", "component": "community", "format": "apk", "security": False,
+    },
 ]
 
 
@@ -471,8 +524,13 @@ def list_packages_by_source(source_id: str, limit: int = 1000, offset: int = 0) 
     return [dict(r) for r in rows]
 
 
-def search_packages(query: str, limit: int = 30, source_id: str = None, distro: str = None) -> list[dict]:
-    """Recherche des paquets APK dans l'index local."""
+def search_packages(query: str, limit: int = 30, source_id: str = None, distro: str = None, arch: str = None) -> list[dict]:
+    """Recherche des paquets APK dans l'index local.
+
+    arch : filtre optionnel sur l'architecture exacte (ex: "aarch64") — sans
+    ce filtre, x86_64 et aarch64 apparaissent mélangés, x86_64 en premier
+    (voir get_package_info() pour le raisonnement complet).
+    """
     query = query.strip()
     if not query:
         return []
@@ -486,12 +544,14 @@ def search_packages(query: str, limit: int = 30, source_id: str = None, distro: 
             WHERE (LOWER(name) LIKE LOWER(:q_wild) OR LOWER(description) LIKE LOWER(:q_wild))
             AND (:source_id IS NULL OR source_id = :source_id)
             AND (:distro IS NULL OR distro LIKE :distro_pattern)
+            AND (:arch IS NULL OR arch = :arch)
             ORDER BY
                 CASE
                     WHEN name = :q       THEN 0
                     WHEN LOWER(name) LIKE LOWER(:q_prefix) THEN 1
                     ELSE                      2
                 END,
+                CASE WHEN arch = 'x86_64' THEN 0 ELSE 1 END,
                 name ASC
             LIMIT :limit
         """), {
@@ -502,24 +562,35 @@ def search_packages(query: str, limit: int = 30, source_id: str = None, distro: 
             "limit": limit,
             "distro": distro,
             "distro_pattern": f"{distro}%" if distro else None,
+            "arch": arch,
         }).mappings().fetchall()
 
     return [dict(r) for r in rows]
 
 
-def get_package_info(name: str, source_id: str = None) -> dict | None:
-    """Retourne les infos d'un paquet APK par nom exact."""
+def get_package_info(name: str, source_id: str = None, arch: str = None) -> dict | None:
+    """Retourne les infos d'un paquet APK par nom exact.
+
+    arch : filtre explicite sur l'architecture exacte (ex: "aarch64"). Depuis
+    l'ajout des sources aarch64 (même `distro` que leur équivalent x86_64,
+    par cohérence avec les autres formats), un même (name, distro) peut
+    désormais correspondre à plusieurs lignes — sans filtre, x86_64 reste
+    préféré par défaut (ORDER BY), pour ne rien changer au comportement des
+    appelants existants.
+    """
     with db_conn() as conn:
         row = conn.execute(text("""
             SELECT *, 'apk' AS format FROM apk_packages
             WHERE name = :name
             AND (:source_id IS NULL OR source_id = :source_id)
+            AND (:arch IS NULL OR arch = :arch)
+            ORDER BY CASE WHEN arch = 'x86_64' THEN 0 ELSE 1 END, synced_at DESC
             LIMIT 1
-        """), {"name": name, "source_id": source_id}).mappings().fetchone()
+        """), {"name": name, "source_id": source_id, "arch": arch}).mappings().fetchone()
     return dict(row) if row else None
 
 
-def resolve_provide_to_package(provide: str, source_id: str = None) -> dict | None:
+def resolve_provide_to_package(provide: str, source_id: str = None, arch: str = None) -> dict | None:
     """
     Résout une dépendance virtuelle APK (so:libssl.so.3, cmd:bash, pc:zlib…)
     vers le paquet qui la fournit, via la colonne `provides` (même convention
@@ -531,15 +602,19 @@ def resolve_provide_to_package(provide: str, source_id: str = None) -> dict | No
     résolution, la grande majorité des dépendances directes d'un paquet APK
     seraient ignorées silencieusement (elles ne correspondent à aucun nom de
     paquet réel).
+
+    arch : voir get_package_info() — même filtre optionnel avec préférence
+    x86_64 par défaut.
     """
     with db_conn() as conn:
         row = conn.execute(text("""
             SELECT *, 'apk' AS format FROM apk_packages
             WHERE provides LIKE :pat
             AND (:source_id IS NULL OR source_id = :source_id)
-            ORDER BY synced_at DESC
+            AND (:arch IS NULL OR arch = :arch)
+            ORDER BY CASE WHEN arch = 'x86_64' THEN 0 ELSE 1 END, synced_at DESC
             LIMIT 1
-        """), {"pat": f"%{provide}%", "source_id": source_id}).mappings().fetchone()
+        """), {"pat": f"%{provide}%", "source_id": source_id, "arch": arch}).mappings().fetchone()
     return dict(row) if row else None
 
 

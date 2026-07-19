@@ -33,10 +33,10 @@ POOL_DIR      = Path(os.getenv("POOL_DIR",       "/repos/pool"))
 
 # Versions Alpine supportées
 APK_DISTRIBUTIONS = [
-    {"codename": "alpine3.18", "name": "Alpine Linux 3.18", "arch": ["x86_64"]},
-    {"codename": "alpine3.19", "name": "Alpine Linux 3.19", "arch": ["x86_64"]},
-    {"codename": "alpine3.20", "name": "Alpine Linux 3.20", "arch": ["x86_64"]},
-    {"codename": "alpine3.21", "name": "Alpine Linux 3.21", "arch": ["x86_64"]},
+    {"codename": "alpine3.18", "name": "Alpine Linux 3.18", "arch": ["x86_64", "aarch64"]},
+    {"codename": "alpine3.19", "name": "Alpine Linux 3.19", "arch": ["x86_64", "aarch64"]},
+    {"codename": "alpine3.20", "name": "Alpine Linux 3.20", "arch": ["x86_64", "aarch64"]},
+    {"codename": "alpine3.21", "name": "Alpine Linux 3.21", "arch": ["x86_64", "aarch64"]},
 ]
 
 VALID_APK_CODENAMES: set[str] = {d["codename"] for d in APK_DISTRIBUTIONS}
@@ -238,7 +238,7 @@ def init_all_distributions() -> dict:
 
 # ── Ajout / suppression de paquets ────────────────────────────────────────────
 
-def add_package(apk_path: Path, codename: str, arch: str = "x86_64") -> tuple[bool, str]:
+def add_package(apk_path: Path, codename: str, arch: str | None = None) -> tuple[bool, str]:
     """
     Ajoute un paquet .apk au dépôt et reconstruit l'APKINDEX.
 
@@ -248,19 +248,32 @@ def add_package(apk_path: Path, codename: str, arch: str = "x86_64") -> tuple[bo
     4. Reconstruit APKINDEX.tar.gz
 
     Le fichier dans pool/ n'est PAS supprimé — il sert pour le manifest et les scans.
+
+    arch : architecture cible. Si omis (None, le cas normal), dérivée
+    automatiquement des métadonnées .PKGINFO du fichier lui-même
+    (meta["arch"]) — jamais supposée x86_64 par défaut. Bug réel trouvé en
+    ajoutant le support arm64 : ni routers/upload.py (upload manuel) ni
+    services/importer_apk.py (import) ne passaient jamais ce paramètre, qui
+    retombait donc toujours sur l'ancien défaut "x86_64" — un .apk aarch64
+    uploadé ou importé atterrissait silencieusement dans le répertoire
+    x86_64, corrompant son APKINDEX (fichiers du mauvais arch mélangés à
+    l'index d'un autre) sans qu'aucune erreur ne soit jamais levée.
     """
     if codename not in VALID_APK_CODENAMES:
         return False, f"Distribution inconnue : {codename}"
 
+    try:
+        meta = parse_apk_metadata(apk_path)
+    except Exception:
+        meta = {}
+
+    if arch is None:
+        arch = meta.get("arch") or "x86_64"
+
     repo_d = _repo_dir(codename, arch)
     repo_d.mkdir(parents=True, exist_ok=True)
 
-    # Nom de fichier canonique
-    try:
-        meta    = parse_apk_metadata(apk_path)
-        dest_fn = _apk_filename(meta, apk_path)
-    except Exception:
-        dest_fn = apk_path.name
+    dest_fn = _apk_filename(meta, apk_path) if meta else apk_path.name
 
     dest = repo_d / dest_fn
     shutil.copy2(apk_path, dest)

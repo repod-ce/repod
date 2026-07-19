@@ -96,13 +96,14 @@ if _REPO_FORMAT == "all":
         """Recherche dans les trois index."""
         return _apt_search(q, **kwargs) + _rpm_search(q, **kwargs) + _apk_search(q, **kwargs)
 
-    def get_package_info(name: str) -> dict | None:                   # noqa: E302
+    def get_package_info(name: str, arch: str | None = None) -> dict | None:  # noqa: E302
         """Cherche dans APT puis RPM puis APK."""
-        return _apt_get_info(name) or _rpm_get_info(name) or _apk_get_info(name)
+        return _apt_get_info(name, arch=arch) or _rpm_get_info(name, arch=arch) or _apk_get_info(name, arch=arch)
 
-    def get_package_info_for_distro(name: str, distro: str | None) -> dict | None:  # noqa: E302
+    def get_package_info_for_distro(name: str, distro: str | None, arch: str | None = None) -> dict | None:  # noqa: E302
         """Cherche dans APT (avec filtre distro) puis RPM puis APK."""
-        return _apt_get_info_for_distro(name, distro) or _rpm_get_info(name) or _apk_get_info(name)
+        return (_apt_get_info_for_distro(name, distro, arch=arch)
+                or _rpm_get_info(name, arch=arch) or _apk_get_info(name, arch=arch))
 
     def is_indexed() -> bool:                                         # noqa: E302
         """Vrai si au moins un des trois index contient des paquets."""
@@ -180,13 +181,13 @@ elif _REPO_FORMAT == "both":
         """Recherche dans les deux index."""
         return _apt_search(q, **kwargs) + _rpm_search(q, **kwargs)
 
-    def get_package_info(name: str) -> dict | None:                   # noqa: E302
+    def get_package_info(name: str, arch: str | None = None) -> dict | None:  # noqa: E302
         """Cherche dans APT puis RPM."""
-        return _apt_get_info(name) or _rpm_get_info(name)
+        return _apt_get_info(name, arch=arch) or _rpm_get_info(name, arch=arch)
 
-    def get_package_info_for_distro(name: str, distro: str | None) -> dict | None:  # noqa: E302
+    def get_package_info_for_distro(name: str, distro: str | None, arch: str | None = None) -> dict | None:  # noqa: E302
         """Cherche dans APT (avec filtre distro) puis RPM."""
-        return _apt_get_info_for_distro(name, distro) or _rpm_get_info(name)
+        return _apt_get_info_for_distro(name, distro, arch=arch) or _rpm_get_info(name, arch=arch)
 
     def is_indexed() -> bool:                                         # noqa: E302
         """Vrai si au moins un des deux index contient des paquets."""
@@ -217,9 +218,9 @@ elif _is_apk() and not _is_rpm():
         list_packages_by_source,
     )
 
-    def get_package_info_for_distro(name: str, distro: str | None) -> dict | None:
+    def get_package_info_for_distro(name: str, distro: str | None, arch: str | None = None) -> dict | None:
         """En mode APK, alias de get_package_info()."""
-        return get_package_info(name)
+        return get_package_info(name, arch=arch)
 
     def get_sync_stats() -> list[dict]:
         return get_sync_status()
@@ -256,9 +257,9 @@ elif _is_rpm():
         list_packages_by_source,
     )
 
-    def get_package_info_for_distro(name: str, distro: str | None) -> dict | None:
+    def get_package_info_for_distro(name: str, distro: str | None, arch: str | None = None) -> dict | None:
         """En mode RPM, alias de get_package_info() avec source_prefix."""
-        return get_package_info(name, source_prefix=distro)
+        return get_package_info(name, source_prefix=distro, arch=arch)
 
 # ─── Mode APT (défaut) ────────────────────────────────────────────────────────
 else:

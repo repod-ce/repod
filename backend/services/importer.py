@@ -41,14 +41,19 @@ def _format_from_distribution(distribution: str | None) -> str:
     return "deb"
 
 
-def resolve_deps_online(package_name: str, distro: str | None = None) -> dict:
+def resolve_deps_online(package_name: str, distro: str | None = None, arch: str | None = None) -> dict:
     """Résout les dépendances en ligne selon le format de la distribution.
 
     `distro` sert à choisir le bon module (_format_from_distribution) MAIS
     doit aussi être transmis à `_fn` lui-même — bug réel trouvé et corrigé
     ici : cette fonction ne le passait qu'au choix de format, jamais à
     l'appel réel, ce qui annulait silencieusement le filtre par distro côté
-    importer_apt.py même une fois celui-ci corrigé pour l'accepter."""
+    importer_apt.py même une fois celui-ci corrigé pour l'accepter.
+
+    `arch` (ex: "arm64"/"aarch64") départage entre architectures d'une même
+    distro — voir chaque importer_*.py pour le niveau de support réel
+    (complet côté APT/APK, partiel côté RPM dont resolve_deps_online()
+    n'utilise déjà pas `distro` — limitation préexistante, pas introduite ici)."""
     fmt = _format_from_distribution(distro)
     if fmt == "apk":
         from services.importer_apk import resolve_deps_online as _fn
@@ -56,7 +61,7 @@ def resolve_deps_online(package_name: str, distro: str | None = None) -> dict:
         from services.importer_rpm import resolve_deps_online as _fn
     else:
         from services.importer_apt import resolve_deps_online as _fn
-    return _fn(package_name, distro=distro)
+    return _fn(package_name, distro=distro, arch=arch)
 
 
 def import_package_stream(
@@ -64,6 +69,7 @@ def import_package_stream(
     user: str,
     group: str | None = None,
     distribution: str | None = None,
+    arch: str | None = None,
 ):
     """
     Importe un paquet en streaming SSE, en choisissant l'implémentation
@@ -76,7 +82,7 @@ def import_package_stream(
         from services.importer_rpm import import_package_stream as _stream
     else:
         from services.importer_apt import import_package_stream as _stream
-    yield from _stream(package_name, user, group, distribution)
+    yield from _stream(package_name, user, group, distribution, arch=arch)
 
 
 def import_one(pkg_row: dict, distribution: str, user: str, group: str | None = None) -> dict:

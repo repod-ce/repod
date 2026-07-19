@@ -367,6 +367,190 @@ DEFAULT_SOURCES = [
         "security": True,
         "format": "rpm",
     },
+    # ── aarch64 ────────────────────────────────────────────────────────────────
+    # Toutes les URLs ci-dessous ont été vérifiées en direct (HTTP 200) et
+    # signées par les MÊMES clés déjà présentes dans rpm-archive-keyring.gpg
+    # (confirmé : GOODSIG/EXPKEYSIG sur les mêmes keyids que leurs équivalents
+    # x86_64) — aucun ajout de clé nécessaire, contrairement à Alpine (APK).
+    {
+        "id": "almalinux8-baseos-aarch64",
+        "label": "AlmaLinux 8 — BaseOS [aarch64]",
+        "repomd_url": "https://repo.almalinux.org/almalinux/8/BaseOS/aarch64/os/repodata/repomd.xml",
+        "distro": "almalinux8", "arch": "aarch64", "component": "baseos", "security": True, "format": "rpm",
+    },
+    {
+        "id": "almalinux8-appstream-aarch64",
+        "label": "AlmaLinux 8 — AppStream [aarch64]",
+        "repomd_url": "https://repo.almalinux.org/almalinux/8/AppStream/aarch64/os/repodata/repomd.xml",
+        "distro": "almalinux8", "arch": "aarch64", "component": "appstream", "security": True, "format": "rpm",
+    },
+    {
+        "id": "almalinux8-extras-aarch64",
+        "label": "AlmaLinux 8 — Extras [aarch64]",
+        "repomd_url": "https://repo.almalinux.org/almalinux/8/extras/aarch64/os/repodata/repomd.xml",
+        "distro": "almalinux8", "arch": "aarch64", "component": "extras", "security": False, "format": "rpm",
+    },
+    {
+        "id": "almalinux9-baseos-aarch64",
+        "label": "AlmaLinux 9 — BaseOS [aarch64]",
+        "repomd_url": "https://repo.almalinux.org/almalinux/9/BaseOS/aarch64/os/repodata/repomd.xml",
+        "distro": "almalinux9", "arch": "aarch64", "component": "baseos", "security": True, "format": "rpm",
+    },
+    {
+        "id": "almalinux9-appstream-aarch64",
+        "label": "AlmaLinux 9 — AppStream [aarch64]",
+        "repomd_url": "https://repo.almalinux.org/almalinux/9/AppStream/aarch64/os/repodata/repomd.xml",
+        "distro": "almalinux9", "arch": "aarch64", "component": "appstream", "security": True, "format": "rpm",
+    },
+    {
+        "id": "almalinux9-extras-aarch64",
+        "label": "AlmaLinux 9 — Extras [aarch64]",
+        "repomd_url": "https://repo.almalinux.org/almalinux/9/extras/aarch64/os/repodata/repomd.xml",
+        "distro": "almalinux9", "arch": "aarch64", "component": "extras", "security": False, "format": "rpm",
+    },
+    {
+        "id": "almalinux10-baseos-aarch64",
+        "label": "AlmaLinux 10 — BaseOS [aarch64]",
+        "repomd_url": "https://repo.almalinux.org/almalinux/10/BaseOS/aarch64/os/repodata/repomd.xml",
+        "distro": "almalinux10", "arch": "aarch64", "component": "baseos", "security": True, "format": "rpm",
+    },
+    {
+        "id": "almalinux10-appstream-aarch64",
+        "label": "AlmaLinux 10 — AppStream [aarch64]",
+        "repomd_url": "https://repo.almalinux.org/almalinux/10/AppStream/aarch64/os/repodata/repomd.xml",
+        "distro": "almalinux10", "arch": "aarch64", "component": "appstream", "security": True, "format": "rpm",
+    },
+    {
+        "id": "rocky8-baseos-aarch64",
+        "label": "Rocky Linux 8 — BaseOS [aarch64]",
+        "repomd_url": "https://dl.rockylinux.org/pub/rocky/8/BaseOS/aarch64/os/repodata/repomd.xml",
+        "distro": "rocky8", "arch": "aarch64", "component": "baseos", "security": True, "format": "rpm",
+    },
+    {
+        "id": "rocky8-appstream-aarch64",
+        "label": "Rocky Linux 8 — AppStream [aarch64]",
+        "repomd_url": "https://dl.rockylinux.org/pub/rocky/8/AppStream/aarch64/os/repodata/repomd.xml",
+        "distro": "rocky8", "arch": "aarch64", "component": "appstream", "security": True, "format": "rpm",
+    },
+    {
+        "id": "rocky8-extras-aarch64",
+        "label": "Rocky Linux 8 — Extras [aarch64]",
+        "repomd_url": "https://dl.rockylinux.org/pub/rocky/8/extras/aarch64/os/repodata/repomd.xml",
+        "distro": "rocky8", "arch": "aarch64", "component": "extras", "security": False, "format": "rpm",
+    },
+    {
+        "id": "rocky9-baseos-aarch64",
+        "label": "Rocky Linux 9 — BaseOS [aarch64]",
+        "repomd_url": "https://dl.rockylinux.org/pub/rocky/9/BaseOS/aarch64/os/repodata/repomd.xml",
+        "distro": "rocky9", "arch": "aarch64", "component": "baseos", "security": True, "format": "rpm",
+    },
+    {
+        "id": "rocky9-appstream-aarch64",
+        "label": "Rocky Linux 9 — AppStream [aarch64]",
+        "repomd_url": "https://dl.rockylinux.org/pub/rocky/9/AppStream/aarch64/os/repodata/repomd.xml",
+        "distro": "rocky9", "arch": "aarch64", "component": "appstream", "security": True, "format": "rpm",
+    },
+    {
+        "id": "rocky9-extras-aarch64",
+        "label": "Rocky Linux 9 — Extras [aarch64]",
+        "repomd_url": "https://dl.rockylinux.org/pub/rocky/9/extras/aarch64/os/repodata/repomd.xml",
+        "distro": "rocky9", "arch": "aarch64", "component": "extras", "security": False, "format": "rpm",
+    },
+    {
+        "id": "rocky10-baseos-aarch64",
+        "label": "Rocky Linux 10 — BaseOS [aarch64]",
+        "repomd_url": "https://dl.rockylinux.org/pub/rocky/10/BaseOS/aarch64/os/repodata/repomd.xml",
+        "distro": "rocky10", "arch": "aarch64", "component": "baseos", "security": True, "format": "rpm",
+    },
+    {
+        "id": "rocky10-appstream-aarch64",
+        "label": "Rocky Linux 10 — AppStream [aarch64]",
+        "repomd_url": "https://dl.rockylinux.org/pub/rocky/10/AppStream/aarch64/os/repodata/repomd.xml",
+        "distro": "rocky10", "arch": "aarch64", "component": "appstream", "security": True, "format": "rpm",
+    },
+    {
+        "id": "centos-stream9-baseos-aarch64",
+        "label": "CentOS Stream 9 — BaseOS [aarch64]",
+        "repomd_url": "https://mirror.stream.centos.org/9-stream/BaseOS/aarch64/os/repodata/repomd.xml",
+        "distro": "centos-stream9", "arch": "aarch64", "component": "baseos", "security": False, "format": "rpm",
+    },
+    {
+        "id": "centos-stream9-appstream-aarch64",
+        "label": "CentOS Stream 9 — AppStream [aarch64]",
+        "repomd_url": "https://mirror.stream.centos.org/9-stream/AppStream/aarch64/os/repodata/repomd.xml",
+        "distro": "centos-stream9", "arch": "aarch64", "component": "appstream", "security": False, "format": "rpm",
+    },
+    # Oracle Linux : "baseos" garde le segment /latest/ sur aarch64, mais
+    # "appstream" ne l'a PAS (confirmé en direct : 404 avec /latest/, 200 sans)
+    # — quirk propre au mirroir Oracle, pas une incohérence à corriger.
+    {
+        "id": "oraclelinux8-baseos-aarch64",
+        "label": "Oracle Linux 8 — BaseOS [aarch64]",
+        "repomd_url": "https://yum.oracle.com/repo/OracleLinux/OL8/baseos/latest/aarch64/repodata/repomd.xml",
+        "distro": "oraclelinux8", "arch": "aarch64", "component": "baseos", "security": True, "format": "rpm",
+    },
+    {
+        "id": "oraclelinux8-appstream-aarch64",
+        "label": "Oracle Linux 8 — AppStream [aarch64]",
+        "repomd_url": "https://yum.oracle.com/repo/OracleLinux/OL8/appstream/aarch64/repodata/repomd.xml",
+        "distro": "oraclelinux8", "arch": "aarch64", "component": "appstream", "security": True, "format": "rpm",
+    },
+    {
+        "id": "oraclelinux9-baseos-aarch64",
+        "label": "Oracle Linux 9 — BaseOS [aarch64]",
+        "repomd_url": "https://yum.oracle.com/repo/OracleLinux/OL9/baseos/latest/aarch64/repodata/repomd.xml",
+        "distro": "oraclelinux9", "arch": "aarch64", "component": "baseos", "security": True, "format": "rpm",
+    },
+    {
+        "id": "oraclelinux9-appstream-aarch64",
+        "label": "Oracle Linux 9 — AppStream [aarch64]",
+        "repomd_url": "https://yum.oracle.com/repo/OracleLinux/OL9/appstream/aarch64/repodata/repomd.xml",
+        "distro": "oraclelinux9", "arch": "aarch64", "component": "appstream", "security": True, "format": "rpm",
+    },
+    {
+        "id": "fedora42-aarch64",
+        "label": "Fedora 42 — Everything [aarch64]",
+        "repomd_url": "https://archives.fedoraproject.org/pub/archive/fedora/linux/releases/42/Everything/aarch64/os/repodata/repomd.xml",
+        "distro": "fedora", "arch": "aarch64", "component": "everything", "security": False, "format": "rpm",
+    },
+    {
+        "id": "fedora42-updates-aarch64",
+        "label": "Fedora 42 — Updates [aarch64]",
+        "repomd_url": "https://archives.fedoraproject.org/pub/archive/fedora/linux/updates/42/Everything/aarch64/repodata/repomd.xml",
+        "distro": "fedora", "arch": "aarch64", "component": "updates", "security": True, "format": "rpm",
+    },
+    {
+        "id": "epel8-aarch64",
+        "label": "EPEL 8 — Extra Packages [aarch64]",
+        "repomd_url": "https://dl.fedoraproject.org/pub/epel/8/Everything/aarch64/repodata/repomd.xml",
+        "distro": "almalinux8", "arch": "aarch64", "component": "epel", "security": False, "format": "rpm",
+    },
+    {
+        "id": "epel9-aarch64",
+        "label": "EPEL 9 — Extra Packages [aarch64]",
+        "repomd_url": "https://dl.fedoraproject.org/pub/epel/9/Everything/aarch64/repodata/repomd.xml",
+        "distro": "rocky9", "arch": "aarch64", "component": "epel", "security": False, "format": "rpm",
+    },
+    # openSUSE aarch64 est servi sous un préfixe /ports/aarch64/ dédié
+    # (confirmé en direct), pas un simple swap x86_64->aarch64 dans l'URL.
+    {
+        "id": "opensuse-leap-15.6-oss-aarch64",
+        "label": "openSUSE Leap 15.6 — OSS [aarch64]",
+        "repomd_url": "https://download.opensuse.org/ports/aarch64/distribution/leap/15.6/repo/oss/repodata/repomd.xml",
+        "distro": "opensuse-leap-15.6", "arch": "aarch64", "component": "oss", "security": False, "format": "rpm",
+    },
+    {
+        "id": "opensuse-leap-15.6-updates-aarch64",
+        "label": "openSUSE Leap 15.6 — Updates [aarch64]",
+        "repomd_url": "https://download.opensuse.org/ports/aarch64/update/leap/15.6/oss/repodata/repomd.xml",
+        "distro": "opensuse-leap-15.6", "arch": "aarch64", "component": "updates", "security": True, "format": "rpm",
+    },
+    {
+        "id": "opensuse-tumbleweed-oss-aarch64",
+        "label": "openSUSE Tumbleweed — OSS [aarch64]",
+        "repomd_url": "https://download.opensuse.org/ports/aarch64/tumbleweed/repo/oss/repodata/repomd.xml",
+        "distro": "opensuse-tumbleweed", "arch": "aarch64", "component": "oss", "security": True, "format": "rpm",
+    },
 ]
 
 
@@ -872,12 +1056,16 @@ def _log_sync(source_id: str, status: str, pkg_count: int, error: str | None,
 
 # ─── Recherche dans l'index ───────────────────────────────────────────────────
 
-def get_package_info(name: str, source_id: str = None, source_prefix: str = None) -> dict | None:
+def get_package_info(name: str, source_id: str = None, source_prefix: str = None, arch: str = None) -> dict | None:
     """Cherche un paquet par nom exact dans l'index local.
 
     source_prefix : si fourni, filtre les sources dont l'ID commence par ce préfixe
-    (ex. "almalinux9" → cherche dans almalinux9-baseos, almalinux9-appstream, etc.).
-    Utile pour cibler la bonne distribution sans connaître le nom complet de la source.
+    (ex. "almalinux9" → cherche dans almalinux9-baseos, almalinux9-appstream, etc.,
+    ce qui inclut désormais aussi almalinux9-baseos-aarch64 puisque le préfixe ne
+    distingue pas l'architecture — voir le paramètre `arch` ci-dessous).
+    arch : filtre explicite sur l'architecture exacte (ex: "aarch64"). Sans ce
+    filtre, x86_64 reste préféré par défaut (ORDER BY déjà en place avant l'ajout
+    des sources aarch64) — comportement inchangé pour les appelants existants.
     """
     with db_conn() as conn:
         row = conn.execute(text("""
@@ -885,6 +1073,7 @@ def get_package_info(name: str, source_id: str = None, source_prefix: str = None
             WHERE name = :name
             AND (:source_id IS NULL OR source_id = :source_id)
             AND (:source_prefix IS NULL OR source_id LIKE :source_prefix_like)
+            AND (:arch IS NULL OR arch = :arch)
             ORDER BY CASE WHEN arch = 'x86_64' THEN 0 ELSE 1 END, synced_at DESC
             LIMIT 1
         """), {
@@ -892,25 +1081,29 @@ def get_package_info(name: str, source_id: str = None, source_prefix: str = None
             "source_id": source_id,
             "source_prefix": source_prefix,
             "source_prefix_like": f"{source_prefix}%" if source_prefix else None,
+            "arch": arch,
         }).mappings().fetchone()
     return {**dict(row), "format": "rpm"} if row else None
 
 
-def resolve_provide_to_package(provide: str) -> dict | None:
+def resolve_provide_to_package(provide: str, arch: str = None) -> dict | None:
     """
     Résout une capability RPM (provide) vers le paquet qui la fournit.
     Ex: 'libc.so.6(GLIBC_2.34)(64bit)' → {name: 'glibc', ...}
+
+    arch : voir get_package_info() — même filtre optionnel.
     """
-    pkg = get_package_info(provide)
+    pkg = get_package_info(provide, arch=arch)
     if pkg:
         return pkg
     with db_conn() as conn:
         row = conn.execute(text("""
             SELECT * FROM packages
             WHERE LOWER(provides) LIKE LOWER(:pat)
+            AND (:arch IS NULL OR arch = :arch)
             ORDER BY CASE WHEN arch = 'x86_64' THEN 0 ELSE 1 END, synced_at DESC
             LIMIT 1
-        """), {"pat": f"%{provide}%"}).mappings().fetchone()
+        """), {"pat": f"%{provide}%", "arch": arch}).mappings().fetchone()
     return dict(row) if row else None
 
 
@@ -929,21 +1122,28 @@ def list_packages_by_source(source_id: str, limit: int = 1000, offset: int = 0) 
     return [{**dict(r), "format": "rpm"} for r in rows]
 
 
-def search_packages(query: str, limit: int = 50, source_id: str | None = None, distro: str | None = None) -> list[dict]:
-    """Recherche des paquets par nom ou résumé dans l'index local."""
+def search_packages(query: str, limit: int = 50, source_id: str | None = None, distro: str | None = None, arch: str | None = None) -> list[dict]:
+    """Recherche des paquets par nom ou résumé dans l'index local.
+
+    arch : filtre optionnel sur l'architecture exacte (ex: "aarch64") — sans
+    ce filtre, x86_64 et aarch64 apparaissent mélangés, x86_64 en premier.
+    """
     with db_conn() as conn:
         rows = conn.execute(text("""
             SELECT * FROM packages
             WHERE (LOWER(name) LIKE LOWER(:q) OR LOWER(summary) LIKE LOWER(:q))
             AND (:source_id IS NULL OR source_id = :source_id)
             AND (:distro IS NULL OR distro LIKE :distro_pattern)
-            ORDER BY name LIMIT :limit
+            AND (:arch IS NULL OR arch = :arch)
+            ORDER BY CASE WHEN arch = 'x86_64' THEN 0 ELSE 1 END, name
+            LIMIT :limit
         """), {
             "q": f"%{query}%",
             "source_id": source_id,
             "limit": limit,
             "distro": distro,
             "distro_pattern": f"{distro}%" if distro else None,
+            "arch": arch,
         }).mappings().fetchall()
     return [{**dict(r), "format": "rpm"} for r in rows]
 

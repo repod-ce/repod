@@ -32,12 +32,12 @@ _FAKE_DB = {
 }
 
 
-def _fake_get_package_info(name, source_id=None):
+def _fake_get_package_info(name, source_id=None, arch=None):
     row = _FAKE_DB.get(name)
     return dict(row) if row else None
 
 
-def _fake_resolve_provide_to_package(token, source_id=None):
+def _fake_resolve_provide_to_package(token, source_id=None, arch=None):
     """Reproduit le LIKE '%token%' de la vraie requête SQL (package_index_apk.py)
     — la colonne provides porte des suffixes de version (so:libssl.so.3=3),
     donc le matching doit être par sous-chaîne, pas par égalité exacte."""
@@ -47,7 +47,7 @@ def _fake_resolve_provide_to_package(token, source_id=None):
     return None
 
 
-def _fake_get_package_info_apk(pkg_name, distro=None):
+def _fake_get_package_info_apk(pkg_name, distro=None, arch=None):
     row = _FAKE_DB.get(pkg_name)
     return (dict(row), None) if row else (None, None)
 
@@ -98,9 +98,9 @@ class TestResolveDepsTransitive:
                          "depends": "so:libssl.so.3 so:libghost.so.1", "provides": None}
 
         with patch("services.importer_apk._get_package_info_apk",
-                   side_effect=lambda n, distro=None: (dict(db[n]), None) if n in db else (None, None)), \
+                   side_effect=lambda n, distro=None, arch=None: (dict(db[n]), None) if n in db else (None, None)), \
              patch("services.package_index_apk.get_package_info",
-                   side_effect=lambda n, source_id=None: dict(db[n]) if n in db else None), \
+                   side_effect=lambda n, source_id=None, arch=None: dict(db[n]) if n in db else None), \
              patch("services.package_index_apk.resolve_provide_to_package",
                    side_effect=_fake_resolve_provide_to_package):
             result = imp.resolve_deps_online("webapp")
@@ -117,9 +117,9 @@ class TestResolveDepsTransitive:
         db["webapp"] = {"name": "webapp", "version": "1.0", "depends": "/bin/sh", "provides": None}
 
         with patch("services.importer_apk._get_package_info_apk",
-                   side_effect=lambda n, distro=None: (dict(db[n]), None) if n in db else (None, None)), \
+                   side_effect=lambda n, distro=None, arch=None: (dict(db[n]), None) if n in db else (None, None)), \
              patch("services.package_index_apk.get_package_info",
-                   side_effect=lambda n, source_id=None: dict(db[n]) if n in db else None), \
+                   side_effect=lambda n, source_id=None, arch=None: dict(db[n]) if n in db else None), \
              patch("services.package_index_apk.resolve_provide_to_package", return_value=None):
             result = imp.resolve_deps_online("webapp")
 
@@ -134,7 +134,7 @@ class TestResolveDepsTransitive:
         db["webapp"] = {"name": "webapp", "version": "1.0", "depends": "!conflicting-pkg", "provides": None}
 
         with patch("services.importer_apk._get_package_info_apk",
-                   side_effect=lambda n, distro=None: (dict(db[n]), None) if n in db else (None, None)), \
+                   side_effect=lambda n, distro=None, arch=None: (dict(db[n]), None) if n in db else (None, None)), \
              patch("services.package_index_apk.get_package_info", return_value=None), \
              patch("services.package_index_apk.resolve_provide_to_package", return_value=None):
             result = imp.resolve_deps_online("webapp")
@@ -160,11 +160,11 @@ class TestResolveDepsTransitive:
         import services.importer_apk as imp
 
         with patch("services.importer_apk._get_package_info_apk",
-                   side_effect=lambda n, distro=None: (dict(chain_db[n]), None) if n in chain_db else (None, None)), \
+                   side_effect=lambda n, distro=None, arch=None: (dict(chain_db[n]), None) if n in chain_db else (None, None)), \
              patch("services.package_index_apk.get_package_info",
-                   side_effect=lambda n, source_id=None: dict(chain_db[n]) if n in chain_db else None), \
+                   side_effect=lambda n, source_id=None, arch=None: dict(chain_db[n]) if n in chain_db else None), \
              patch("services.package_index_apk.resolve_provide_to_package",
-                   side_effect=lambda t, source_id=None: dict(chain_db[t]) if t in chain_db else None):
+                   side_effect=lambda t, source_id=None, arch=None: dict(chain_db[t]) if t in chain_db else None):
             result = imp.resolve_deps_online("pkg0", max_depth=3)
 
         names = {p["name"] for p in result["packages"]}

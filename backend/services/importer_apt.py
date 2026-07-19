@@ -56,7 +56,7 @@ def _get_source_base_url(source_url: str) -> str:
     return source_url.split("/dists/")[0]
 
 
-def _download_deb(pkg_name: str, tmp_dir: str, distro: str | None = None) -> tuple[Path | None, str, str | None]:
+def _download_deb(pkg_name: str, tmp_dir: str, distro: str | None = None, arch: str | None = None) -> tuple[Path | None, str, str | None]:
     """
     Télécharge un .deb depuis l'index SQLite local.
     Si `distro` est fourni (ex: "jammy"), privilégie la ligne indexée pour
@@ -66,6 +66,12 @@ def _download_deb(pkg_name: str, tmp_dir: str, distro: str | None = None) -> tup
     Fallback sur get_package_info(name) si `distro` est absent ou sans
     correspondance, même comportement qu'avant pour les appelants qui ne le
     passent pas encore (compat ascendante).
+
+    `arch` (ex: "arm64") départage entre les architectures d'une même distro
+    — depuis l'ajout des sources arm64 (même `distro` que leur équivalent
+    amd64), un (name, distro) peut correspondre à plusieurs lignes ; sans ce
+    filtre, amd64 reste préféré par défaut (voir get_package_info_for_distro()).
+
     Retourne (chemin_fichier, source_label, sha256_attendu) ou (None, message_erreur, None).
     """
     from services.package_index import DEFAULT_SOURCES
@@ -74,7 +80,7 @@ def _download_deb(pkg_name: str, tmp_dir: str, distro: str | None = None) -> tup
         get_package_info_for_distro as index_get_info_for_distro,
     )
 
-    row = index_get_info_for_distro(pkg_name, distro) if distro else index_get_info(pkg_name)
+    row = index_get_info_for_distro(pkg_name, distro, arch=arch) if distro else index_get_info(pkg_name, arch=arch)
     if not row or not row.get("filename"):
         return None, f"'{pkg_name}' introuvable dans l'index — lancez une synchronisation", None
 
@@ -101,7 +107,7 @@ def _download_deb(pkg_name: str, tmp_dir: str, distro: str | None = None) -> tup
         return None, f"Erreur téléchargement {pkg_name}: {e}", None
 
 
-def resolve_deps_online(package_name: str, distro: str | None = None) -> dict:
+def resolve_deps_online(package_name: str, distro: str | None = None, arch: str | None = None) -> dict:
     """
     Résout les dépendances d'un paquet depuis l'index SQLite.
 
@@ -113,6 +119,9 @@ def resolve_deps_online(package_name: str, distro: str | None = None) -> dict:
     du tout, RPM utilisant `requires`) — repéré en direct : l'aperçu
     "dépendances" avant import affichait "1 paquet" pour un paquet en ayant
     réellement ~12, exactement à cause de ce choix de ligne erroné.
+
+    `arch` (ex: "arm64") départage entre architectures d'une même distro —
+    voir _download_deb() pour le même raisonnement.
     """
     from services.indexer import get_package_info as repo_get_info
     from services.package_index import get_package_info as index_get_info
@@ -120,7 +129,7 @@ def resolve_deps_online(package_name: str, distro: str | None = None) -> dict:
         get_package_info_for_distro as index_get_info_for_distro,
     )
 
-    row = index_get_info_for_distro(package_name, distro) if distro else index_get_info(package_name)
+    row = index_get_info_for_distro(package_name, distro, arch=arch) if distro else index_get_info(package_name, arch=arch)
     if not row:
         return {
             "success": False,
@@ -147,7 +156,7 @@ def resolve_deps_online(package_name: str, distro: str | None = None) -> dict:
         real_name = dep
         if not already_present:
             # Résoudre les paquets virtuels via Provides dans l'index APT
-            idx = index_get_info_for_distro(dep, distro) if distro else index_get_info(dep)
+            idx = index_get_info_for_distro(dep, distro, arch=arch) if distro else index_get_info(dep, arch=arch)
             if idx and idx["name"] != dep:
                 # Paquet virtuel : substituer par le vrai fournisseur
                 real_name = idx["name"]
@@ -227,7 +236,7 @@ def _import_one_locked(pkg_row: dict, distribution: str, user: str, group: str |
         # = :distro` de get_package_info_for_distro(), cohérent avec la distro
         # déjà résolue par l'appelant et déjà utilisée plus bas pour
         # run_validation_pipeline()/generate_manifest().
-        path, info, expected_sha256 = _download_deb(pkg_name, tmp_dir, distro=distribution)
+        path, info, expected_sha256 = _download_deb(pkg_name, tmp_dir, distro=distribution, arch=pkg_row.get("arch"))
         if not path:
             return {"status": "error", "name": pkg_name, "version": version,
                     "message": info, "steps": []}
@@ -300,10 +309,15 @@ def _import_one_locked(pkg_row: dict, distribution: str, user: str, group: str |
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
-def import_package_stream(package_name: str, user: str, group: str | None = None, distribution: str | None = None) -> Generator[str, None, None]:
+def import_package_stream(package_name: str, user: str, group: str | None = None, distribution: str | None = None, arch: str | None = None) -> Generator[str, None, None]:
     """
     Télécharge un paquet et ses dépendances, les valide et les ajoute au repo.
     Génère des messages de log en temps réel (Server-Sent Events).
+
+    `arch` (ex: "arm64") départage entre architectures d'une même distro —
+    voir _download_deb()/resolve_deps_online() pour le même raisonnement.
+    Sans lui, amd64 reste préféré par défaut, comportement inchangé pour les
+    appelants existants.
     """
     from services.distributions import detect_distribution_from_source
     from services.package_index import get_package_info as index_get_info
@@ -327,8 +341,8 @@ def import_package_stream(package_name: str, user: str, group: str | None = None
         parce que la ligne Fedora choisie par erreur n'a pas de `depends`
         du tout (RPM utilise `requires`, une colonne différente)."""
         if distribution:
-            return index_get_info_for_distro(pkg_name, distribution)
-        return index_get_info(pkg_name)
+            return index_get_info_for_distro(pkg_name, distribution, arch=arch)
+        return index_get_info(pkg_name, arch=arch)
 
     yield emit(f"Démarrage de l'import de '{package_name}'...")
 
@@ -386,7 +400,7 @@ def import_package_stream(package_name: str, user: str, group: str | None = None
             depth += 1
             next_frontier: list[str] = []
             for pkg in frontier:
-                pkg_row = index_get_info_for_distro(pkg, target_distrib)
+                pkg_row = index_get_info_for_distro(pkg, target_distrib, arch=arch)
                 if not pkg_row or not pkg_row.get("depends"):
                     continue
                 for dep_name in _parse_dep_field(pkg_row["depends"]):
@@ -431,13 +445,13 @@ def import_package_stream(package_name: str, user: str, group: str | None = None
         failed = []
 
         for pkg in to_download:
-            pkg_row = index_get_info_for_distro(pkg, target_distrib)
+            pkg_row = index_get_info_for_distro(pkg, target_distrib, arch=arch)
             if not pkg_row:
                 if not synced_once:
                     yield emit(f"  '{pkg}' absent de l'index — synchronisation en cours...", "warning")
                     synced_once = True
                     _sync_index_now()
-                    pkg_row = index_get_info_for_distro(pkg, target_distrib)
+                    pkg_row = index_get_info_for_distro(pkg, target_distrib, arch=arch)
                 if not pkg_row:
                     yield emit(f"  [WARN] Ignoré : '{pkg}' introuvable dans l'index", "warning")
                     continue
@@ -454,7 +468,7 @@ def import_package_stream(package_name: str, user: str, group: str | None = None
                 yield emit(f"  '{pkg}' absent de l'index pour {target_distrib} — synchronisation en cours...", "warning")
                 synced_once = True
                 _sync_index_now()
-                pkg_row = index_get_info_for_distro(pkg, target_distrib)
+                pkg_row = index_get_info_for_distro(pkg, target_distrib, arch=arch)
                 if pkg_row:
                     result = import_one(pkg_row, target_distrib, user, group=group or package_name)
 

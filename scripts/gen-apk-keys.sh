@@ -21,12 +21,14 @@
 # _verify_apkindex_signature() puisse résoudre la bonne clé publique
 # directement par nom sans deviner.
 #
-# Couverture confirmée en direct : les 8 sources DEFAULT_SOURCES (Alpine
+# Couverture confirmée en direct : les 8 sources x86_64 (Alpine
 # 3.18/3.19/3.20/3.21 × main/community) utilisent toutes la même clé
 # "alpine-devel@lists.alpinelinux.org-6165ee59.rsa.pub" (génération 2021,
-# encore active à ce jour) — une seule clé suffit pour l'instant, mais le
-# format par-fichier ci-dessus permet d'en ajouter d'autres sans changer de
-# schéma le jour où Alpine fait tourner ses clés.
+# encore active à ce jour). Les 8 sources aarch64 équivalentes utilisent en
+# revanche une clé DIFFÉRENTE, "...-616ae350.rsa.pub" — confirmé en direct :
+# Alpine signe chaque architecture avec sa propre clé, pas une clé unique
+# partagée. Exactement le cas d'usage anticipé par le format par-fichier
+# ci-dessus (résolution directe par nom de clé, sans schéma à changer).
 #
 # Usage :
 #   bash scripts/gen-apk-keys.sh
@@ -39,7 +41,8 @@ OUT_DIR="$(dirname "$0")/../backend/security-keys/apk-keys"
 mkdir -p "$OUT_DIR"
 
 KEYS=(
-  "alpine-devel@lists.alpinelinux.org-6165ee59.rsa.pub"
+  "alpine-devel@lists.alpinelinux.org-6165ee59.rsa.pub"  # x86_64
+  "alpine-devel@lists.alpinelinux.org-616ae350.rsa.pub"  # aarch64
 )
 
 for key in "${KEYS[@]}"; do

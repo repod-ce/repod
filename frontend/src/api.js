@@ -120,17 +120,21 @@ export const uploadPackage = (file, distribution = "jammy") => {
 
 // ─── Import depuis internet ───────────────────────────────────────────────────
 
-export const searchImportPackages = (q, limit = 60, source_id = null, format = null, distro = null) => {
+export const searchImportPackages = (q, limit = 60, source_id = null, format = null, distro = null, arch = null) => {
   const params = new URLSearchParams({ q, limit });
   if (source_id) params.append("source_id", source_id);
   if (format)    params.append("format", format);
   if (distro)    params.append("distro", distro);
+  if (arch)      params.append("arch", arch);
   return api.get(`/import/search?${params}`).then((r) => r.data);
 };
 
-export const resolveImportDeps = (packageName, distro) => {
-  const params = distro ? `?distro=${encodeURIComponent(distro)}` : "";
-  return api.get(`/import/resolve/${encodeURIComponent(packageName)}${params}`).then((r) => r.data);
+export const resolveImportDeps = (packageName, distro, arch = null) => {
+  const params = new URLSearchParams();
+  if (distro) params.append("distro", distro);
+  if (arch)   params.append("arch", arch);
+  const qs = params.toString();
+  return api.get(`/import/resolve/${encodeURIComponent(packageName)}${qs ? `?${qs}` : ""}`).then((r) => r.data);
 };
 
 export const getImportSyncStatus = () =>
