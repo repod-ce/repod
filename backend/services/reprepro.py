@@ -76,13 +76,24 @@ def remove_package(
     results: dict[str, dict] = {}
 
     for dist in dists:
+        # --delete est indispensable ici : sans lui, reprepro conserve le
+        # fichier .deb dans le pool hiérarchique (pool/main/**/{name}_*.deb)
+        # même une fois retiré de toutes les distributions qui le
+        # référençaient (comportement par défaut de reprepro, documenté dans
+        # son --help : "Delete included files if reasonable" n'est PAS
+        # l'option par défaut). Sans ce flag, un paquet "supprimé" via l'UI
+        # reste physiquement présent dans le pool hiérarchique — invisible
+        # dans l'UI (manifest/index PostgreSQL bien retirés), mais toujours
+        # détecté comme "déjà présent" par import_package_stream() (qui
+        # vérifie précisément ce pool hiérarchique), bloquant silencieusement
+        # toute réimportation ultérieure.
         if via_docker:
             cmd = [
                 "docker", "exec", _CONTAINER,
-                "reprepro", "-b", _WEB_BASE, "remove", dist, name,
+                "reprepro", "-b", _WEB_BASE, "--delete", "remove", dist, name,
             ]
         else:
-            cmd = ["reprepro", "-b", _BASE, "remove", dist, name]
+            cmd = ["reprepro", "-b", _BASE, "--delete", "remove", dist, name]
 
         try:
             proc = subprocess.run(
@@ -109,6 +120,25 @@ def remove_package(
     all_ok = all(r["ok"] for r in results.values())
     if all_ok:
         logger.info(f"[reprepro] {name} retiré de : {', '.join(dists)}")
+
+    # `--delete` sur `remove` ne suffit pas à lui seul : testé en direct,
+    # reprepro laisse le fichier .deb orphelin dans le pool hiérographique
+    # si, au moment du remove, il croit encore le fichier potentiellement
+    # référencé ailleurs. `deleteunreferenced` est la commande dédiée qui
+    # balaie et purge tout fichier réellement non référencé — appelée ici en
+    # best-effort après CHAQUE suppression, elle nettoie aussi bien le
+    # fichier qu'on vient de retirer que d'éventuels orphelins hérités de
+    # suppressions précédentes (avant ce correctif, quand --delete était
+    # totalement absent des commandes remove).
+    try:
+        cmd = (
+            ["docker", "exec", _CONTAINER, "reprepro", "-b", _WEB_BASE, "--delete", "deleteunreferenced"]
+            if via_docker
+            else ["reprepro", "-b", _BASE, "--delete", "deleteunreferenced"]
+        )
+        subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+    except Exception as exc:
+        logger.warning(f"[reprepro] deleteunreferenced après suppression de {name} — échec (best-effort) : {exc}")
 
     return {
         "package":       name,
