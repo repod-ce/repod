@@ -194,4 +194,168 @@ class TestImportPackageReusesDepsInfo:
         with patch.object(imp, "resolve_deps_online", return_value=deps_info) as mock_resolve:
             imp.import_package("webapp", "almalinux9")
 
-        mock_resolve.assert_called_once_with("webapp")
+        mock_resolve.assert_called_once_with("webapp", distro="almalinux9")
+
+
+class TestDistroScopedResolution:
+    """
+    Régression : resolve_deps_online() acceptait un `distro` avalé par
+    **_kwargs sans jamais s'en servir — ni pour le lookup racine
+    (_rpm_get_info(package_name), sans source_prefix, contrairement à
+    _download_rpm() dans le même fichier), ni pour la résolution des
+    capabilities (resolve_provide_to_package(token), sans source_prefix
+    non plus). Quand le même nom de paquet existe dans plusieurs distros
+    indexées (ex. AlmaLinux 9 ET openSUSE Tumbleweed), la résolution
+    transitive pouvait silencieusement partir de la mauvaise ligne — même
+    bug que celui déjà corrigé côté APT ("prometheus" Fedora vs Ubuntu),
+    un niveau plus profond (BFS + capabilities).
+
+    Utilise la vraie base de test (db_test_engine, SQLite in-memory,
+    autouse) plutôt que des mocks, pour exercer le SQL réel de
+    get_package_info()/resolve_provide_to_package() avec `source_prefix`.
+    """
+
+    def _insert(self, conn, source_id, distro, name, version, requires="", provides="", synced_at=None):
+        from datetime import datetime, timezone
+
+        from sqlalchemy import text
+        conn.execute(text("""
+            INSERT INTO packages (source_id, name, version, arch, requires, provides, distro, synced_at)
+            VALUES (:source_id, :name, :version, 'x86_64', :requires, :provides, :distro, :synced_at)
+        """), {
+            "source_id": source_id, "name": name, "version": version,
+            "requires": requires, "provides": provides, "distro": distro,
+            "synced_at": synced_at or datetime.now(timezone.utc).isoformat(),
+        })
+
+    def _seed_same_name_different_distros(self, conn):
+        # Même nom "prometheus" publié dans deux distros RPM distinctes,
+        # chacune requérant une dépendance directe différente. La ligne
+        # openSUSE est délibérément insérée avec un synced_at PLUS RÉCENT
+        # que la ligne AlmaLinux : get_package_info() trie par
+        # "synced_at DESC" en dernier recours, donc un lookup non scopé
+        # (le bug) retournerait systématiquement la ligne openSUSE quelle
+        # que soit la distro demandée.
+        from datetime import datetime, timedelta, timezone
+        older = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+        newer = datetime.now(timezone.utc).isoformat()
+
+        self._insert(conn, "almalinux9-baseos", "almalinux9", "prometheus", "2.45-1.el9",
+                      requires="glibc-almalinux", synced_at=older)
+        self._insert(conn, "opensuse-tumbleweed-oss", "opensuse-tumbleweed", "prometheus", "3.0-1.suse",
+                      requires="glibc-opensuse", synced_at=newer)
+        self._insert(conn, "almalinux9-baseos", "almalinux9", "glibc-almalinux", "2.34-1.el9", synced_at=older)
+        self._insert(conn, "opensuse-tumbleweed-oss", "opensuse-tumbleweed", "glibc-opensuse", "2.38-1.suse",
+                      synced_at=newer)
+
+    def test_root_resolved_from_requested_distro(self, db_test_engine):
+        """
+        La distro demandée (almalinux9) est la ligne la PLUS ANCIENNE — un
+        lookup non scopé (tri synced_at DESC) retournerait à tort la ligne
+        openSUSE. Seul un filtrage effectif par source_prefix fait passer ce test.
+        """
+        from db.engine import db_conn
+        from services.importer_rpm import resolve_deps_online
+
+        with db_conn() as conn:
+            self._seed_same_name_different_distros(conn)
+
+        result = resolve_deps_online("prometheus", distro="almalinux9")
+        assert result["success"] is True
+        names = {p["name"] for p in result["packages"]}
+        assert names == {"glibc-almalinux"}
+
+    def test_root_resolved_from_other_distro(self, db_test_engine):
+        """Le même appel avec une distro différente doit résoudre l'AUTRE ligne, pas la même."""
+        from db.engine import db_conn
+        from services.importer_rpm import resolve_deps_online
+
+        with db_conn() as conn:
+            self._seed_same_name_different_distros(conn)
+
+        result = resolve_deps_online("prometheus", distro="opensuse-tumbleweed")
+        assert result["success"] is True
+        names = {p["name"] for p in result["packages"]}
+        assert names == {"glibc-opensuse"}
+
+    def test_capability_resolved_within_requested_distro(self, db_test_engine):
+        """
+        Une capability virtuelle (Requires: un nom de paquet différent de
+        celui qui la fournit réellement — même convention que "webserver"/
+        "httpd" plus haut dans ce fichier) fournie par des paquets de deux
+        distros différentes doit résoudre vers le paquet de la distro
+        demandée (resolve_provide_to_package() doit aussi respecter
+        source_prefix). Le fournisseur openSUSE (non demandé) est
+        délibérément le plus récent — un lookup non scopé le retournerait à
+        tort. Nom SANS parenthèses délibérément : _tokens() filtre déjà les
+        tokens du type "libfoo.so.1(...)(64bit)" avant qu'ils n'atteignent
+        _resolve_dep() (limitation préexistante de ce fichier, distincte du
+        scoping par distro testé ici — voir importer_apt.py pour un import
+        qui, lui, ne filtre pas ces tokens).
+        """
+        from datetime import datetime, timedelta, timezone
+
+        from db.engine import db_conn
+        from services.importer_rpm import resolve_deps_online
+
+        older = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+        newer = datetime.now(timezone.utc).isoformat()
+        capability = "libfoo-provide"
+        with db_conn() as conn:
+            self._insert(conn, "almalinux9-baseos", "almalinux9", "prometheus", "2.45-1.el9",
+                          requires=capability, synced_at=newer)
+            self._insert(conn, "almalinux9-baseos", "almalinux9", "provider-almalinux", "1.0-1.el9",
+                          provides=capability, synced_at=older)
+            self._insert(conn, "opensuse-tumbleweed-oss", "opensuse-tumbleweed", "provider-opensuse", "1.0-1.suse",
+                          provides=capability, synced_at=newer)
+
+        result = resolve_deps_online("prometheus", distro="almalinux9")
+        names = {p["name"] for p in result["packages"]}
+        assert names == {"provider-almalinux"}
+        assert "provider-opensuse" not in names
+
+    def test_transitive_dependency_stays_within_requested_distro(self, db_test_engine):
+        """
+        Même bug, mais un niveau plus profond : le paquet direct requis
+        ("libcurl") existe dans les deux distros avec des sous-dépendances
+        DIFFÉRENTES ; un mauvais scoping au niveau BFS ferait dériver toute
+        la fermeture transitive vers la mauvaise distro, pas seulement le nom
+        immédiat.
+        """
+        from datetime import datetime, timedelta, timezone
+
+        from db.engine import db_conn
+        from services.importer_rpm import resolve_deps_online
+
+        older = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+        newer = datetime.now(timezone.utc).isoformat()
+        with db_conn() as conn:
+            self._insert(conn, "almalinux9-baseos", "almalinux9", "prometheus", "2.45-1.el9",
+                          requires="libcurl", synced_at=older)
+            self._insert(conn, "almalinux9-baseos", "almalinux9", "libcurl", "7.76-1.el9",
+                          requires="openssl-almalinux", synced_at=older)
+            self._insert(conn, "opensuse-tumbleweed-oss", "opensuse-tumbleweed", "libcurl", "8.0-1.suse",
+                          requires="openssl-opensuse", synced_at=newer)
+            self._insert(conn, "almalinux9-baseos", "almalinux9", "openssl-almalinux", "3.0-1.el9", synced_at=older)
+            self._insert(conn, "opensuse-tumbleweed-oss", "opensuse-tumbleweed", "openssl-opensuse", "3.1-1.suse",
+                          synced_at=newer)
+
+        result = resolve_deps_online("prometheus", distro="almalinux9")
+        names = {p["name"] for p in result["packages"]}
+        assert names == {"libcurl", "openssl-almalinux"}
+        assert "openssl-opensuse" not in names
+
+    def test_no_distro_keeps_any_source_fallback(self, db_test_engine):
+        """Sans distro fournie (comportement historique), la résolution reste toutes-sources."""
+        from db.engine import db_conn
+        from services.importer_rpm import resolve_deps_online
+
+        with db_conn() as conn:
+            self._insert(conn, "almalinux9-baseos", "almalinux9", "prometheus", "2.45-1.el9",
+                          requires="glibc-almalinux")
+            self._insert(conn, "almalinux9-baseos", "almalinux9", "glibc-almalinux", "2.34-1.el9")
+
+        result = resolve_deps_online("prometheus")
+        assert result["success"] is True
+        names = {p["name"] for p in result["packages"]}
+        assert names == {"glibc-almalinux"}

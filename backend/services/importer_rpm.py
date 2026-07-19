@@ -89,7 +89,7 @@ def _download_rpm(pkg_name: str, tmp_dir: str, distribution: str = "", arch: str
         return None, f"Erreur téléchargement {pkg_name}: {e}", None
 
 
-def resolve_deps_online(package_name: str, max_depth: int = 8, **_kwargs) -> dict:
+def resolve_deps_online(package_name: str, distro: str | None = None, max_depth: int = 8, **_kwargs) -> dict:
     """
     Résout l'arbre COMPLET (transitif) des dépendances RPM d'un paquet,
     jusqu'à max_depth niveaux — même patron que importer_apt.py.
@@ -103,6 +103,14 @@ def resolve_deps_online(package_name: str, max_depth: int = 8, **_kwargs) -> dic
     paquet exact puis retombe sur la colonne Provides — nécessaire car un
     Requires RPM désigne très souvent un paquet virtuel plutôt que le nom
     réel du paquet qui le fournit.
+
+    distro : si fourni (ex. "almalinux9"), privilégie les sources correspondantes
+    (almalinux9-baseos, almalinux9-appstream…) à la fois pour le paquet racine et
+    pour chaque capability résolue — même paquet source_prefix que _download_rpm(),
+    pour éviter de résoudre vers le paquet d'une autre distro (ex. Fedora) quand le
+    même nom existe dans plusieurs distros indexées. Bug réel trouvé/corrigé
+    séparément du support arm64 (voir _download_rpm()/import_package_stream()
+    ci-dessous pour `arch` — un axe orthogonal, jamais mélangé à celui-ci).
     """
     # Utiliser directement package_index_rpm pour éviter que le dispatcher
     # "all" retourne un résultat APT/APK en premier
@@ -110,7 +118,9 @@ def resolve_deps_online(package_name: str, max_depth: int = 8, **_kwargs) -> dic
     from services.package_index_rpm import get_package_info as _rpm_get_info
     from services.package_index_rpm import resolve_provide_to_package
 
-    root = _rpm_get_info(package_name)
+    root = _rpm_get_info(package_name, source_prefix=distro) if distro else None
+    if not root:
+        root = _rpm_get_info(package_name)
     if not root:
         return {
             "success": False,
@@ -126,6 +136,13 @@ def resolve_deps_online(package_name: str, max_depth: int = 8, **_kwargs) -> dic
             if token and token != package_name and all(c.isalnum() or c in ".-+_" for c in token):
                 names.append(token)
         return names
+
+    def _resolve_dep(token: str) -> dict | None:
+        if distro:
+            row = resolve_provide_to_package(token, source_prefix=distro)
+            if row:
+                return row
+        return resolve_provide_to_package(token)
 
     resolved_names: set[str] = set()
     virtual_map: dict[str, str] = {}   # nom réel -> token Requires d'origine (si virtuel)
@@ -143,7 +160,7 @@ def resolve_deps_online(package_name: str, max_depth: int = 8, **_kwargs) -> dic
                     continue
                 seen_tokens.add(token)
 
-                dep_row = resolve_provide_to_package(token)
+                dep_row = _resolve_dep(token)
                 if not dep_row:
                     unresolved.add(token)
                     continue
@@ -320,7 +337,7 @@ def import_package(
     errors = []
 
     if deps_info is None:
-        deps_info = resolve_deps_online(package_name)
+        deps_info = resolve_deps_online(package_name, distro=distribution)
     if not deps_info["success"]:
         return {"success": False, "error": deps_info["error"], "results": []}
 
@@ -401,10 +418,10 @@ def import_package_stream(
 
     `arch` (ex: "aarch64") : accepté pour une interface uniforme entre les
     trois formats — utilisé par _download_rpm() via import_one() (arch
-    dérivée du pkg_row déjà résolu). NE départage PAS encore la résolution
-    de dépendances elle-même : resolve_deps_online() ignore déjà `distro`/
-    `distribution` (limitation préexistante, non introduite ici, hors
-    périmètre du support arm64 — voir le suivi flagué séparément).
+    dérivée du pkg_row déjà résolu). Axe orthogonal à `distribution`/
+    `target_distrib`, qui scope maintenant aussi resolve_deps_online()
+    elle-même (root + capabilities) — voir le raisonnement complet dans
+    resolve_deps_online().
     """
     from services.format_router import DEFAULT_DISTRIBUTION
 
@@ -419,7 +436,7 @@ def import_package_stream(
 
     # Résolution des dépendances (transitive — voir resolve_deps_online())
     yield emit("Résolution de l'arbre de dépendances (transitif)...")
-    deps_info = resolve_deps_online(package_name)
+    deps_info = resolve_deps_online(package_name, distro=target_distrib)
     if not deps_info["success"] and "introuvable dans l'index" in deps_info.get("error", ""):
         # Une seule resynchronisation automatique par appel — même
         # raisonnement que importer_apt.py:import_package_stream() : best-effort,
@@ -430,7 +447,7 @@ def import_package_stream(
             _rpm_sync_all()
         except Exception:
             pass
-        deps_info = resolve_deps_online(package_name)
+        deps_info = resolve_deps_online(package_name, distro=target_distrib)
         if deps_info["success"]:
             yield emit("Synchronisation terminée, reprise de l'import.", "success")
     if not deps_info["success"]:

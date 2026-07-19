@@ -199,3 +199,92 @@ class TestResolveProvideToPackage:
     def test_no_match_returns_none(self, db_test_engine):
         from services.package_index_apk import resolve_provide_to_package
         assert resolve_provide_to_package("so:does-not-exist.so.1") is None
+
+
+class TestDistroScopedResolution:
+    """
+    Régression : le paquet racine et chaque dépendance directe étaient déjà
+    scopés par distro (via _get_package_info_apk()), mais la résolution des
+    capabilities so:/cmd:/pc: retombait sur resolve_provide_to_package() SANS
+    filtre — pouvait résoudre vers le paquet d'une autre version Alpine
+    indexée fournissant la même capability. Même bug que celui déjà corrigé
+    côté APT/RPM ("prometheus" résolu vers la mauvaise distro), un niveau
+    plus profond (BFS + capabilities).
+
+    Utilise la vraie base de test (db_test_engine, SQLite in-memory,
+    autouse) et les vrais DEFAULT_SOURCES/ids d'Alpine (alpine3.21-main,
+    alpine3.18-main).
+    """
+
+    def _insert(self, conn, source_id, distro, name, version, depends="", provides="", synced_at=None):
+        from datetime import datetime, timezone
+
+        from sqlalchemy import text
+        conn.execute(text("""
+            INSERT INTO apk_packages (source_id, name, version, arch, depends, provides, distro, synced_at)
+            VALUES (:source_id, :name, :version, 'x86_64', :depends, :provides, :distro, :synced_at)
+        """), {
+            "source_id": source_id, "name": name, "version": version,
+            "depends": depends, "provides": provides, "distro": distro,
+            "synced_at": synced_at or datetime.now(timezone.utc).isoformat(),
+        })
+
+    def test_transitive_dependency_stays_within_requested_distro(self, db_test_engine):
+        """
+        Même nom 'musl' publié dans deux versions Alpine, avec des
+        sous-dépendances DIFFÉRENTES par distro — un mauvais scoping au
+        niveau BFS ferait dériver toute la fermeture transitive vers la
+        mauvaise distro, pas seulement le nom immédiat. La ligne
+        alpine3.18 (non demandée) est délibérément la plus récente :
+        get_package_info() n'a pas d'ordre de tri déterministe pertinent
+        ici sans filtre par distro, donc un lookup non scopé la
+        retournerait à tort.
+        """
+        from datetime import datetime, timedelta, timezone
+
+        from db.engine import db_conn
+        from services.importer_apk import resolve_deps_online
+
+        older = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+        newer = datetime.now(timezone.utc).isoformat()
+        with db_conn() as conn:
+            self._insert(conn, "alpine3.21-main", "alpine3.21", "nginx", "1.27-r0",
+                          depends="musl", synced_at=older)
+            self._insert(conn, "alpine3.18-main", "alpine3.18", "musl", "1.2.3-r0",
+                          depends="libcrypto318", synced_at=older)
+            self._insert(conn, "alpine3.21-main", "alpine3.21", "musl", "1.2.5-r0",
+                          depends="libcrypto321", synced_at=newer)
+            self._insert(conn, "alpine3.18-main", "alpine3.18", "libcrypto318", "1.0-r0", synced_at=older)
+            self._insert(conn, "alpine3.21-main", "alpine3.21", "libcrypto321", "1.0-r0", synced_at=newer)
+
+        result = resolve_deps_online("nginx", distro="alpine3.21")
+        assert result["success"] is True
+        names = {p["name"] for p in result["packages"]}
+        assert names == {"musl", "libcrypto321"}
+        assert "libcrypto318" not in names
+
+    def test_capability_resolved_within_requested_distro(self, db_test_engine):
+        """
+        so:libssl.so.3 fourni par deux versions Alpine → doit résoudre vers
+        celle demandée. Le fournisseur alpine3.18 (non demandé) est
+        délibérément le plus récent pour piéger un lookup non scopé.
+        """
+        from datetime import datetime, timedelta, timezone
+
+        from db.engine import db_conn
+        from services.importer_apk import resolve_deps_online
+
+        older = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+        newer = datetime.now(timezone.utc).isoformat()
+        with db_conn() as conn:
+            self._insert(conn, "alpine3.21-main", "alpine3.21", "nginx", "1.27-r0",
+                          depends="so:libssl.so.3", synced_at=older)
+            self._insert(conn, "alpine3.21-main", "alpine3.21", "openssl-321", "3.3-r0",
+                          provides="so:libssl.so.3=3", synced_at=older)
+            self._insert(conn, "alpine3.18-main", "alpine3.18", "openssl-318", "3.1-r0",
+                          provides="so:libssl.so.3=3", synced_at=newer)
+
+        result = resolve_deps_online("nginx", distro="alpine3.21")
+        names = {p["name"] for p in result["packages"]}
+        assert names == {"openssl-321"}
+        assert "openssl-318" not in names

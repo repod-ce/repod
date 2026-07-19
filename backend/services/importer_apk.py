@@ -108,8 +108,15 @@ def resolve_deps_online(package_name: str, distro: str | None = None, arch: str 
     resolve_provide_to_package() (colonne `provides`, même convention que
     RPM). Les chemins absolus (/bin/sh…) restent non résolus — généralement
     déjà fournis par l'image de base (busybox) de la machine cible.
+
+    distro : le paquet racine et chaque dépendance directe étaient déjà
+    scopés (via _get_package_info_apk()), mais la résolution des capabilities
+    so:/cmd:/pc: retombait sur resolve_provide_to_package() sans filtre —
+    pouvait résoudre vers le paquet d'une autre version Alpine indexée
+    fournissant la même capability. Corrigé via _resolve_capability()
+    ci-dessous, même paquet source_id-scopé que _download_apk().
     """
-    from services.package_index_apk import get_package_info, resolve_provide_to_package
+    from services.package_index_apk import DEFAULT_SOURCES, get_package_info, resolve_provide_to_package
 
     root_row, _ = _get_package_info_apk(package_name, distro, arch=arch)
     if not root_row:
@@ -123,9 +130,18 @@ def resolve_deps_online(package_name: str, distro: str | None = None, arch: str 
     def _tokens(depends_str: str | None) -> list[str]:
         return [d for d in (depends_str or "").split() if d and not d.startswith("!")]
 
+    def _resolve_capability(token: str) -> dict | None:
+        if distro:
+            for source in DEFAULT_SOURCES:
+                if source.get("distro") == distro and (arch is None or source.get("arch") == arch):
+                    row = resolve_provide_to_package(token, source_id=source["id"], arch=arch)
+                    if row:
+                        return row
+        return resolve_provide_to_package(token, arch=arch)
+
     def _resolve_token(token: str) -> str | None:
         if token.startswith(("so:", "cmd:", "pc:")):
-            provided = resolve_provide_to_package(token)
+            provided = _resolve_capability(token)
             return provided["name"] if provided else None
         if token.startswith("/"):
             return None

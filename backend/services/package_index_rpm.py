@@ -1086,24 +1086,34 @@ def get_package_info(name: str, source_id: str = None, source_prefix: str = None
     return {**dict(row), "format": "rpm"} if row else None
 
 
-def resolve_provide_to_package(provide: str, arch: str = None) -> dict | None:
+def resolve_provide_to_package(provide: str, source_prefix: str | None = None, arch: str = None) -> dict | None:
     """
     Résout une capability RPM (provide) vers le paquet qui la fournit.
     Ex: 'libc.so.6(GLIBC_2.34)(64bit)' → {name: 'glibc', ...}
 
+    source_prefix : même convention que get_package_info() — filtre les sources
+    dont l'ID commence par ce préfixe, pour éviter de résoudre une capability
+    vers le paquet d'une autre distro (ex. Fedora au lieu d'AlmaLinux) quand
+    plusieurs distros indexées la fournissent.
     arch : voir get_package_info() — même filtre optionnel.
     """
-    pkg = get_package_info(provide, arch=arch)
+    pkg = get_package_info(provide, source_prefix=source_prefix, arch=arch)
     if pkg:
         return pkg
     with db_conn() as conn:
         row = conn.execute(text("""
             SELECT * FROM packages
             WHERE LOWER(provides) LIKE LOWER(:pat)
+            AND (:source_prefix IS NULL OR source_id LIKE :source_prefix_like)
             AND (:arch IS NULL OR arch = :arch)
             ORDER BY CASE WHEN arch = 'x86_64' THEN 0 ELSE 1 END, synced_at DESC
             LIMIT 1
-        """), {"pat": f"%{provide}%", "arch": arch}).mappings().fetchone()
+        """), {
+            "pat": f"%{provide}%",
+            "source_prefix": source_prefix,
+            "source_prefix_like": f"{source_prefix}%" if source_prefix else None,
+            "arch": arch,
+        }).mappings().fetchone()
     return dict(row) if row else None
 
 
