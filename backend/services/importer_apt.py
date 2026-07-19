@@ -184,7 +184,21 @@ def import_one(pkg_row: dict, distribution: str, user: str, group: str | None = 
     Retourne un dict :
       {"status": "added"|"pending_review"|"blocked"|"skipped"|"error",
        "name": str, "version": str | None, "message": str, "steps": list[dict]}
+
+    Sérialisé par (nom, distribution) via services.import_lock — voir ce
+    module pour le raisonnement complet : sans ce verrou, deux imports
+    concurrents du même paquet peuvent tous deux télécharger/scanner en
+    double et se disputer reprepro en même temps.
     """
+    from services.import_lock import package_import_lock
+    with package_import_lock(pkg_row["name"], distribution):
+        return _import_one_locked(pkg_row, distribution, user, group)
+
+
+def _import_one_locked(pkg_row: dict, distribution: str, user: str, group: str | None = None) -> dict:
+    """Corps réel de import_one() — voir ce nom pour la docstring complète.
+    Toujours appelé avec le verrou par paquet déjà acquis, jamais
+    directement."""
     from services.audit import log as audit_log
     from services.indexer import add_to_index
     from services.manifest import generate_manifest, save_manifest
