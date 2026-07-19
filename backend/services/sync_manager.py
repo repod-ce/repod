@@ -24,9 +24,10 @@ from typing import Dict, Optional
 class SyncJob:
     """État complet d'un job de synchronisation."""
 
-    def __init__(self, job_id: str, label: str, sources: list):
+    def __init__(self, job_id: str, label: str, sources: list, group: str = ""):
         self.job_id = job_id
         self.label = label
+        self.group = group  # "all"|"apt"|"rpm"|"apk"|"source:<id>" — voir SyncManager._active_job_for_group()
         self.sources = sources
         self.total = len(sources)
         self.done_count = 0
@@ -100,8 +101,6 @@ class SyncManager:
     def __init__(self):
         self._jobs: Dict[str, SyncJob] = {}
         self._lock = threading.Lock()
-        # Un verrou par groupe pour empêcher deux syncs simultanées du même groupe
-        self._group_running: Dict[str, bool] = {}
 
     # ─── Gestion des jobs ─────────────────────────────────────────────────────
 
@@ -133,7 +132,7 @@ class SyncManager:
             if not sources:
                 # Créer un job vide immédiatement terminé
                 job_id = str(uuid.uuid4())[:8]
-                job = SyncJob(job_id, self._label(target), [])
+                job = SyncJob(job_id, self._label(target), [], group=group)
                 job.emit("warning", "Aucune source active pour cette sélection")
                 job.status = "done"
                 job.finished_at = datetime.now(timezone.utc).isoformat()
@@ -141,14 +140,13 @@ class SyncManager:
                 return job
 
             job_id = str(uuid.uuid4())[:8]
-            job = SyncJob(job_id, self._label(target), sources)
+            job = SyncJob(job_id, self._label(target), sources, group=group)
             self._jobs[job_id] = job
-            self._group_running[group] = True
             self._cleanup_old_jobs()
 
         thread = threading.Thread(
             target=self._run_job,
-            args=(job, group, user),
+            args=(job, user),
             daemon=True,
             name=f"sync-{job_id}",
         )
@@ -181,7 +179,7 @@ class SyncManager:
 
     # ─── Corps du job ─────────────────────────────────────────────────────────
 
-    def _run_job(self, job: SyncJob, group: str, user: str) -> None:
+    def _run_job(self, job: SyncJob, user: str) -> None:
         try:
             from services.package_index import sync_source as _sync_one
 
@@ -242,8 +240,6 @@ class SyncManager:
         finally:
             job.finished_at = datetime.now(timezone.utc).isoformat()
             job._new_log.set()
-            with self._lock:
-                self._group_running.pop(group, None)
 
     def _run_format_group(
         self, job: SyncJob, sources: list, fmt_label: str, fmt_key: str, sync_fn
@@ -350,11 +346,24 @@ class SyncManager:
         return [src] if src else []
 
     def _active_job_for_group(self, group: str) -> Optional[SyncJob]:
-        """Retourne le job actif pour ce groupe, ou None."""
+        """
+        Retourne le job actif pour ce groupe, ou None.
+
+        Bug réel trouvé et corrigé ici : cette méthode reconstruisait le
+        groupe en reparsant le premier mot du LIBELLÉ D'AFFICHAGE du job
+        (ex: "Toutes les sources" → "toutes" → _target_to_group("toutes")
+        → "source:toutes", jamais "all") — vérifié mathématiquement pour
+        les 5 cas (all/apt/rpm/apk/source unique) : AUCUN ne correspondait
+        jamais. Le mutex "un seul job actif par groupe" documenté dans le
+        docstring du module était donc un no-op total depuis toujours.
+        Fixé en comparant directement job.group (stocké tel quel à la
+        création, voir start_job()), plus aucune reconstruction depuis un
+        texte destiné à l'affichage.
+        """
         return next(
             (j for j in self._jobs.values()
              if j.status == "running"
-             and self._target_to_group(j.label.split()[0].lower()) == group),
+             and j.group == group),
             None,
         )
 
