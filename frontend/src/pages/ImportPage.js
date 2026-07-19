@@ -371,7 +371,10 @@ function SearchImportTab() {
     const guessedFmt = DISTRIBUTIONS.find(d => d.codename === guessed)?.format;
     if (guessedFmt === currentFormat) setDistribution(guessed);
     try {
-      const data = await resolveImportDeps(pkg.name);
+      // guessed, pas l'état distribution — setDistribution() ci-dessus est
+      // asynchrone (React ne l'applique qu'au prochain rendu), donc lire
+      // `distribution` ici renverrait encore l'ancienne valeur.
+      const data = await resolveImportDeps(pkg.name, guessed);
       setDeps(data);
     } catch {
       setDeps(null);

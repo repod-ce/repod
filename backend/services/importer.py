@@ -12,7 +12,9 @@ Interface publique commune (attendue par import_router.py) :
   resolve_deps_online(package_name, distro=None) → dict
   import_package_stream(name, user, group, distribution) → Generator[str]
 """
-from services.format_router import is_rpm as _is_rpm, is_apk as _is_apk, REPO_FORMAT as _REPO_FORMAT
+from services.format_router import REPO_FORMAT as _REPO_FORMAT
+from services.format_router import is_apk as _is_apk
+from services.format_router import is_rpm as _is_rpm
 
 # Préfixes de codenames pour déterminer le format depuis la distribution
 _APK_PREFIXES = ("alpine",)
@@ -40,7 +42,13 @@ def _format_from_distribution(distribution: str | None) -> str:
 
 
 def resolve_deps_online(package_name: str, distro: str | None = None) -> dict:
-    """Résout les dépendances en ligne selon le format de la distribution."""
+    """Résout les dépendances en ligne selon le format de la distribution.
+
+    `distro` sert à choisir le bon module (_format_from_distribution) MAIS
+    doit aussi être transmis à `_fn` lui-même — bug réel trouvé et corrigé
+    ici : cette fonction ne le passait qu'au choix de format, jamais à
+    l'appel réel, ce qui annulait silencieusement le filtre par distro côté
+    importer_apt.py même une fois celui-ci corrigé pour l'accepter."""
     fmt = _format_from_distribution(distro)
     if fmt == "apk":
         from services.importer_apk import resolve_deps_online as _fn
@@ -48,7 +56,7 @@ def resolve_deps_online(package_name: str, distro: str | None = None) -> dict:
         from services.importer_rpm import resolve_deps_online as _fn
     else:
         from services.importer_apt import resolve_deps_online as _fn
-    return _fn(package_name)
+    return _fn(package_name, distro=distro)
 
 
 def import_package_stream(

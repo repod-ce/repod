@@ -89,13 +89,18 @@ def search(
 @router.get("/resolve/{package_name}")
 def resolve(
     package_name: str,
+    distro: str | None = None,
     current_user: str = Depends(get_current_user),
 ):
     """
     Résout les dépendances d'un paquet en temps réel via apt-cache.
     Indique pour chaque dépendance si elle est déjà dans le repo interne.
+
+    `distro` (ex: "jammy") scope la résolution à la distribution ciblée —
+    voir resolve_deps_online() : sans elle, un nom de paquet présent dans
+    plusieurs distros/formats peut résoudre vers la mauvaise ligne d'index.
     """
-    result = resolve_deps_online(package_name)
+    result = resolve_deps_online(package_name, distro=distro)
     if not result["success"]:
         raise HTTPException(status_code=404, detail=result["error"])
     return result

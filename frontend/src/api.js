@@ -128,8 +128,10 @@ export const searchImportPackages = (q, limit = 60, source_id = null, format = n
   return api.get(`/import/search?${params}`).then((r) => r.data);
 };
 
-export const resolveImportDeps = (packageName) =>
-  api.get(`/import/resolve/${encodeURIComponent(packageName)}`).then((r) => r.data);
+export const resolveImportDeps = (packageName, distro) => {
+  const params = distro ? `?distro=${encodeURIComponent(distro)}` : "";
+  return api.get(`/import/resolve/${encodeURIComponent(packageName)}${params}`).then((r) => r.data);
+};
 
 export const getImportSyncStatus = () =>
   api.get("/import/sync-status").then((r) => r.data);

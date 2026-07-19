@@ -70,7 +70,9 @@ def _download_deb(pkg_name: str, tmp_dir: str, distro: str | None = None) -> tup
     """
     from services.package_index import DEFAULT_SOURCES
     from services.package_index import get_package_info as index_get_info
-    from services.package_index import get_package_info_for_distro as index_get_info_for_distro
+    from services.package_index import (
+        get_package_info_for_distro as index_get_info_for_distro,
+    )
 
     row = index_get_info_for_distro(pkg_name, distro) if distro else index_get_info(pkg_name)
     if not row or not row.get("filename"):
@@ -99,14 +101,26 @@ def _download_deb(pkg_name: str, tmp_dir: str, distro: str | None = None) -> tup
         return None, f"Erreur téléchargement {pkg_name}: {e}", None
 
 
-def resolve_deps_online(package_name: str) -> dict:
+def resolve_deps_online(package_name: str, distro: str | None = None) -> dict:
     """
     Résout les dépendances d'un paquet depuis l'index SQLite.
+
+    `distro` (ex: "jammy") est indispensable dès que ce nom de paquet existe
+    dans plus d'une distro/format — la table `packages` est partagée entre
+    APT/RPM/APK (REPO_FORMAT=all). Sans filtre, get_package_info() choisit
+    une ligne arbitraire (SELECT ... LIMIT 1 sans ORDER BY) qui peut être
+    celle d'un AUTRE format (ex: une ligne RPM Fedora, sans champ `depends`
+    du tout, RPM utilisant `requires`) — repéré en direct : l'aperçu
+    "dépendances" avant import affichait "1 paquet" pour un paquet en ayant
+    réellement ~12, exactement à cause de ce choix de ligne erroné.
     """
     from services.indexer import get_package_info as repo_get_info
     from services.package_index import get_package_info as index_get_info
+    from services.package_index import (
+        get_package_info_for_distro as index_get_info_for_distro,
+    )
 
-    row = index_get_info(package_name)
+    row = index_get_info_for_distro(package_name, distro) if distro else index_get_info(package_name)
     if not row:
         return {
             "success": False,
@@ -133,7 +147,7 @@ def resolve_deps_online(package_name: str) -> dict:
         real_name = dep
         if not already_present:
             # Résoudre les paquets virtuels via Provides dans l'index APT
-            idx = index_get_info(dep)
+            idx = index_get_info_for_distro(dep, distro) if distro else index_get_info(dep)
             if idx and idx["name"] != dep:
                 # Paquet virtuel : substituer par le vrai fournisseur
                 real_name = idx["name"]
@@ -279,9 +293,28 @@ def import_package_stream(package_name: str, user: str, group: str | None = None
     """
     from services.distributions import detect_distribution_from_source
     from services.package_index import get_package_info as index_get_info
+    from services.package_index import (
+        get_package_info_for_distro as index_get_info_for_distro,
+    )
 
     def emit(msg: str, level: str = "info") -> str:
         return f"data: {level}|{msg}\n\n"
+
+    def _lookup(pkg_name: str) -> dict | None:
+        """Résout un paquet dans l'index, filtré sur `distribution` quand elle
+        est connue. Indispensable : la table `packages` est PARTAGÉE entre
+        APT/RPM/APK (REPO_FORMAT=all) — sans ce filtre, un nom de paquet
+        présent dans plusieurs formats/distros (ex: "prometheus" en APT
+        jammy ET en RPM Fedora) retombe sur un SELECT ... LIMIT 1 sans
+        ORDER BY côté APT, pouvant silencieusement récupérer la ligne d'un
+        AUTRE format/distro (ex: la ligne Fedora, dont le champ `depends`
+        est vide) — repéré en direct : l'arbre de dépendances se résolvait
+        alors à "1 paquet" au lieu des ~12 dépendances réelles de prometheus,
+        parce que la ligne Fedora choisie par erreur n'a pas de `depends`
+        du tout (RPM utilise `requires`, une colonne différente)."""
+        if distribution:
+            return index_get_info_for_distro(pkg_name, distribution)
+        return index_get_info(pkg_name)
 
     yield emit(f"Démarrage de l'import de '{package_name}'...")
 
@@ -294,12 +327,12 @@ def import_package_stream(package_name: str, user: str, group: str | None = None
 
     try:
         # 1. Vérifier que le paquet est dans l'index
-        row = index_get_info(package_name)
+        row = _lookup(package_name)
         if not row:
             yield emit(f"'{package_name}' absent de l'index local — synchronisation en cours...", "warning")
             synced_once = True
             _sync_index_now()
-            row = index_get_info(package_name)
+            row = _lookup(package_name)
             if row:
                 yield emit("Synchronisation terminée, reprise de l'import.", "success")
 
@@ -339,7 +372,7 @@ def import_package_stream(package_name: str, user: str, group: str | None = None
             depth += 1
             next_frontier: list[str] = []
             for pkg in frontier:
-                pkg_row = index_get_info(pkg)
+                pkg_row = index_get_info_for_distro(pkg, target_distrib)
                 if not pkg_row or not pkg_row.get("depends"):
                     continue
                 for dep_name in _parse_dep_field(pkg_row["depends"]):
@@ -384,13 +417,13 @@ def import_package_stream(package_name: str, user: str, group: str | None = None
         failed = []
 
         for pkg in to_download:
-            pkg_row = index_get_info(pkg)
+            pkg_row = index_get_info_for_distro(pkg, target_distrib)
             if not pkg_row:
                 if not synced_once:
                     yield emit(f"  '{pkg}' absent de l'index — synchronisation en cours...", "warning")
                     synced_once = True
                     _sync_index_now()
-                    pkg_row = index_get_info(pkg)
+                    pkg_row = index_get_info_for_distro(pkg, target_distrib)
                 if not pkg_row:
                     yield emit(f"  [WARN] Ignoré : '{pkg}' introuvable dans l'index", "warning")
                     continue
@@ -407,7 +440,7 @@ def import_package_stream(package_name: str, user: str, group: str | None = None
                 yield emit(f"  '{pkg}' absent de l'index pour {target_distrib} — synchronisation en cours...", "warning")
                 synced_once = True
                 _sync_index_now()
-                pkg_row = index_get_info(pkg)
+                pkg_row = index_get_info_for_distro(pkg, target_distrib)
                 if pkg_row:
                     result = import_one(pkg_row, target_distrib, user, group=group or package_name)
 
