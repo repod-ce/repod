@@ -10,6 +10,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 REPO_BASE = Path(os.getenv("REPO_BASE", "/repos"))
+POOL_DIR = Path(os.getenv("POOL_DIR", "/repos/pool"))
 GNUPG_HOME = os.getenv("GNUPG_HOME", "/repos/gnupg")
 
 RPM_DISTRIBUTIONS = [
@@ -196,8 +197,23 @@ def add_rpm_to_distrib(rpm_filename: str, codename: str) -> tuple[bool, str]:
     """
     Copie le .rpm depuis pool/ vers le répertoire distrib/arch/,
     puis relance createrepo_c et signe repomd.xml.
+
+    Bug réel trouvé/corrigé en vérifiant le support arm64 en direct sur .20 :
+    cherchait le fichier source sous REPO_BASE/pool (REPO_BASE vaut
+    /repos/rpm en production — voir docker-compose.yaml, "répertoires
+    createrepo_c" — donc /repos/rpm/pool/), alors que le pool RÉEL et
+    partagé (utilisé par importer_rpm.py, routers/upload.py, et déjà
+    correctement fourni comme variable d'env séparée POOL_DIR par
+    docker-compose.yaml) est /repos/pool/. REPO_BASE sert UNIQUEMENT de
+    base aux arborescences createrepo_c par distribution
+    (REPO_BASE/{codename}/{arch}/) — jamais au pool lui-même, un concept
+    distinct qui a toujours eu sa propre variable d'env, juste jamais lue
+    ici. Confirmé en direct : le téléchargement/la validation d'un paquet
+    RPM réussissaient, mais createrepo_c échouait ensuite avec "Fichier
+    introuvable dans pool/" pour x86_64 ET aarch64 — pas spécifique à
+    l'architecture.
     """
-    rpm_pool_path = REPO_BASE / "pool" / rpm_filename
+    rpm_pool_path = POOL_DIR / rpm_filename
 
     if not rpm_pool_path.exists():
         return False, f"Fichier introuvable dans pool/ : {rpm_filename}"

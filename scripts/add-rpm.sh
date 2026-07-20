@@ -11,7 +11,17 @@ DISTRIB="${1:-almalinux8}"
 FILENAME="${2}"
 ARCH_ARG="${3:-}"
 
+# REPO_BASE sert UNIQUEMENT de base aux arborescences createrepo_c par
+# distribution (REPO_BASE/{distrib}/{arch}/, vaut /repos/rpm en production —
+# voir docker-compose.yaml) — jamais au pool partagé, qui a toujours eu sa
+# propre variable d'env (POOL_DIR, /repos/pool) déjà fournie par
+# docker-compose.yaml mais jamais lue ici jusqu'à ce correctif. Bug réel
+# trouvé/corrigé en vérifiant le support arm64 en direct sur .20 :
+# createrepo_c échouait avec "fichier introuvable" pour x86_64 ET aarch64 —
+# pas spécifique à l'architecture, ce script cherchait le fichier source
+# sous REPO_BASE/pool (/repos/rpm/pool/) au lieu du pool réel (/repos/pool/).
 REPO_BASE="${REPO_BASE:-/repos}"
+POOL_DIR="${POOL_DIR:-/repos/pool}"
 GNUPGHOME="${GNUPG_HOME:-/repos/gnupg}"
 
 if [ -z "$FILENAME" ]; then
@@ -20,7 +30,7 @@ if [ -z "$FILENAME" ]; then
     exit 1
 fi
 
-RPM_PATH="${REPO_BASE}/pool/${FILENAME}"
+RPM_PATH="${POOL_DIR}/${FILENAME}"
 
 if [ ! -f "$RPM_PATH" ]; then
     echo "Erreur : fichier introuvable : ${RPM_PATH}" >&2
