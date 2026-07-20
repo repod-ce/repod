@@ -859,7 +859,7 @@ def search_packages(query: str, limit: int = 30, source_id: str = None, distro: 
     return [{**dict(r), "format": "deb"} for r in rows]
 
 
-def _find_by_provides(conn, name: str, source_id: str = None, arch: str = None):
+def _find_by_provides(conn, name: str, source_id: str = None, arch: str = None, distro: str = None):
     """
     Cherche un paquet qui déclare `name` dans son champ Provides.
     Utilise quatre patterns pour éviter les faux positifs avec LIKE :
@@ -868,6 +868,12 @@ def _find_by_provides(conn, name: str, source_id: str = None, arch: str = None):
       - fin de la liste       : ", name"
       - seul élément          : exact match
     Les noms Provides sont séparés par ", " et peuvent avoir une version "(= x)".
+
+    distro : voir get_package_info_for_distro() — sans ce filtre, un paquet
+    virtuel (ex: "mail-transport-agent") résolu vers un fournisseur réel
+    peut retomber sur celui d'une AUTRE distro que celle demandée, quand
+    plusieurs distros indexées le fournissent chacune sous un nom réel
+    différent.
     """
     patterns = [
         f"{name},%",
@@ -883,9 +889,10 @@ def _find_by_provides(conn, name: str, source_id: str = None, arch: str = None):
             WHERE LOWER(provides) LIKE LOWER(:pat)
             AND (:source_id IS NULL OR source_id = :source_id)
             AND (:arch IS NULL OR arch = :arch)
+            AND (:distro IS NULL OR distro = :distro)
             ORDER BY CASE WHEN arch = 'amd64' THEN 0 ELSE 1 END
             LIMIT 1
-        """), {"pat": pat, "source_id": source_id, "arch": arch}).mappings().fetchone()
+        """), {"pat": pat, "source_id": source_id, "arch": arch, "distro": distro}).mappings().fetchone()
         if row:
             return row
     return None
@@ -929,6 +936,16 @@ def get_package_info_for_distro(name: str, distro: str | None, arch: str | None 
 
     arch : voir get_package_info() — même filtre optionnel avec préférence
     amd64 par défaut, pour départager amd64/arm64 au sein d'une même distro.
+
+    Comme get_package_info(), résout aussi les paquets virtuels via Provides
+    quand le nom exact n'existe pas — mais SCOPÉ à `distro`, pas seulement à
+    `arch` : bug réel trouvé en auditant ce fichier après les correctifs
+    RPM/APK distro-scoping ("prometheus" résolu vers la mauvaise distro,
+    même classe de bug un niveau plus profond). Avant ce correctif, un nom
+    virtuel (ex: "mail-transport-agent") sans ligne exacte dans la distro
+    demandée retombait directement sur get_package_info(name, arch=arch) —
+    entièrement non scopé par distro — et pouvait résoudre vers le
+    fournisseur réel d'une AUTRE distro indexée.
     """
     if distro:
         with db_conn() as conn:
@@ -939,6 +956,8 @@ def get_package_info_for_distro(name: str, distro: str | None, arch: str | None 
                 ORDER BY CASE WHEN arch = 'amd64' THEN 0 ELSE 1 END
                 LIMIT 1
             """), {"name": name, "distro": distro, "arch": arch}).mappings().fetchone()
+            if not row:
+                row = _find_by_provides(conn, name, arch=arch, distro=distro)
         if row:
             return {**dict(row), "format": "deb"}
 
