@@ -263,6 +263,36 @@ class TestDistroScopedResolution:
         assert names == {"musl", "libcrypto321"}
         assert "libcrypto318" not in names
 
+    def test_displayed_version_comes_from_requested_distro(self, db_test_engine):
+        """
+        Bug réel trouvé en auditant ce fichier après le correctif RPM/APK
+        distro-scoping : la boucle finale qui construit le résumé (le champ
+        "version" affiché à l'utilisateur avant import) utilisait encore
+        get_package_info() brut (arch seule, PAS distro), alors que la
+        fermeture transitive elle-même était déjà correctement scopée par
+        distro. La ligne alpine3.18 (non demandée) est délibérément la plus
+        RÉCENTE ici — synced_at DESC est le tie-break de get_package_info()
+        (ORDER BY ajouté pour la désambiguïsation arch) — pour piéger un
+        lookup non scopé qui la préférerait par coïncidence de timestamp.
+        """
+        from datetime import datetime, timedelta, timezone
+
+        from db.engine import db_conn
+        from services.importer_apk import resolve_deps_online
+
+        older = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+        newer = datetime.now(timezone.utc).isoformat()
+        with db_conn() as conn:
+            self._insert(conn, "alpine3.21-main", "alpine3.21", "webapp", "1.0-r0",
+                          depends="musl", synced_at=older)
+            self._insert(conn, "alpine3.21-main", "alpine3.21", "musl", "1.2.5-r0", synced_at=older)
+            self._insert(conn, "alpine3.18-main", "alpine3.18", "musl", "1.2.3-r0", synced_at=newer)
+
+        result = resolve_deps_online("webapp", distro="alpine3.21")
+        assert result["success"] is True
+        musl_entry = next(p for p in result["packages"] if p["name"] == "musl")
+        assert musl_entry["version"] == "1.2.5-r0"
+
     def test_capability_resolved_within_requested_distro(self, db_test_engine):
         """
         so:libssl.so.3 fourni par deux versions Alpine → doit résoudre vers

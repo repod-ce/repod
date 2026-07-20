@@ -116,7 +116,7 @@ def resolve_deps_online(package_name: str, distro: str | None = None, arch: str 
     fournissant la même capability. Corrigé via _resolve_capability()
     ci-dessous, même paquet source_id-scopé que _download_apk().
     """
-    from services.package_index_apk import DEFAULT_SOURCES, get_package_info, resolve_provide_to_package
+    from services.package_index_apk import DEFAULT_SOURCES, resolve_provide_to_package
 
     root_row, _ = _get_package_info_apk(package_name, distro, arch=arch)
     if not root_row:
@@ -177,7 +177,13 @@ def resolve_deps_online(package_name: str, distro: str | None = None, arch: str 
     packages = []
     for dep_name in sorted(resolved_names):
         in_repo = any(POOL_DIR.glob(f"{dep_name}-*.apk"))
-        dep_row = get_package_info(dep_name, arch=arch)
+        # _get_package_info_apk (distro+arch scopé), pas get_package_info()
+        # brut (arch seule) — sinon la version affichée dans le résumé
+        # pré-import peut être celle d'une AUTRE distro Alpine indexée pour
+        # le même nom de paquet. Trouvé en comparant avec la version SaaS,
+        # déjà correcte ici (resolve_deps_online() y utilise
+        # _get_package_info_apk() à ce même endroit).
+        dep_row, _dep_source = _get_package_info_apk(dep_name, distro, arch=arch)
         packages.append({
             "name":            dep_name,
             "version":         dep_row["version"] if dep_row else None,
