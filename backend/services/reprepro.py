@@ -45,6 +45,27 @@ _DEFAULT_DISTS: list[str] = [
 ]
 
 
+def _gnupg_env() -> dict:
+    """
+    reprepro doit re-signer le Release file après tout remove/deleteunreferenced
+    qui change le contenu d'une distribution (comme après un includedeb) — sans
+    GNUPGHOME pointant vers le trousseau partagé, gpg retombe sur le défaut
+    (~/.gnupg, vide pour appuser) et reprepro échoue avec "Could not find any
+    key matching '<key-id>'!" (code de sortie 255), qui se propage jusqu'à
+    "ERROR: Could not finish exporting". Bug réel trouvé en direct : ce module
+    n'a jamais fait cette traduction GNUPG_HOME → GNUPGHOME, contrairement à
+    distributions_apt.py:_reprepro_env() (utilisé par add_package()) — remove
+    échouait donc silencieusement (masqué par le traitement "best-effort" côté
+    appelant), reprepro refusant alors de nettoyer le fichier .deb du pool
+    hiérarchique ("Not deleting possibly left over files due to previous
+    errors"). Résultat concret : un paquet "supprimé" avec succès dans l'UI
+    (manifest/index PostgreSQL bien retirés) restait physiquement dans
+    pool/main/**/ et continuait donc à être détecté comme "déjà présent" par
+    tout code scannant ce pool hiérarchique (ex: import_package_stream()).
+    """
+    return {**os.environ, "GNUPGHOME": os.getenv("GNUPG_HOME", "/repos/gnupg")}
+
+
 # ── Suppression ───────────────────────────────────────────────────────────────
 
 def remove_package(
@@ -101,6 +122,7 @@ def remove_package(
                 capture_output=True,
                 text=True,
                 timeout=30,
+                env=_gnupg_env(),
             )
             ok     = proc.returncode == 0
             output = (proc.stdout or proc.stderr or "").strip()
@@ -136,7 +158,7 @@ def remove_package(
             if via_docker
             else ["reprepro", "-b", _BASE, "--delete", "deleteunreferenced"]
         )
-        subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        subprocess.run(cmd, capture_output=True, text=True, timeout=30, env=_gnupg_env())
     except Exception as exc:
         logger.warning(f"[reprepro] deleteunreferenced après suppression de {name} — échec (best-effort) : {exc}")
 
