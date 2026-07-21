@@ -28,5 +28,5 @@ services:
       context: ./frontend
       args:
         REACT_APP_API_URL: ${REACT_APP_API_URL-}
-        REACT_APP_REPO_URL: ${REACT_APP_REPO_URL-http://localhost:80}
-        REACT_APP_RPM_REPO_URL: ${REACT_APP_RPM_REPO_URL-http://localhost:8080}
+        REACT_APP_REPO_URL: ${REACT_APP_REPO_URL-}
+        REACT_APP_RPM_REPO_URL: ${REACT_APP_RPM_REPO_URL-}

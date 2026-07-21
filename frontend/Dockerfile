@@ -2,14 +2,18 @@
 FROM node:18 AS build
 WORKDIR /app
 
-# L'URL de l'API est injectée au moment du build
-ARG REACT_APP_API_URL=http://localhost:8000
+# Ces trois URLs restent vides par défaut — le frontend dérive une valeur
+# correcte à l'exécution depuis window.location (voir src/api.js:getRepoUrl()/
+# getRpmRepoUrl()/getExternalApiUrl()) plutôt que de figer un "localhost" dans
+# le bundle, faux pour toute machine cliente réelle qui copierait ces
+# commandes. Ne définir ces ARG que pour un domaine dédié explicite (ex. TLS).
+ARG REACT_APP_API_URL=
 ENV REACT_APP_API_URL=$REACT_APP_API_URL
 
-ARG REACT_APP_REPO_URL=http://localhost:80
+ARG REACT_APP_REPO_URL=
 ENV REACT_APP_REPO_URL=$REACT_APP_REPO_URL
 
-ARG REACT_APP_RPM_REPO_URL=http://localhost:8080
+ARG REACT_APP_RPM_REPO_URL=
 ENV REACT_APP_RPM_REPO_URL=$REACT_APP_RPM_REPO_URL
 
 # Version affichée dans le centre d'aide (bas de menu) — injectée au build

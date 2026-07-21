@@ -1,8 +1,9 @@
 import { useState } from "react";
 import toast from "react-hot-toast";
+import { getRepoUrl, getRpmRepoUrl } from "../api";
 
-const REPO_URL     = import.meta.env.REACT_APP_REPO_URL     || "http://localhost:80";
-const RPM_REPO_URL = import.meta.env.REACT_APP_RPM_REPO_URL || "http://localhost:8080";
+const REPO_URL     = getRepoUrl();
+const RPM_REPO_URL = getRpmRepoUrl();
 const REPO_HOST    = REPO_URL.replace(/^https?:\/\//, "").replace(/:\d+$/, "");
 
 // ─── Composants ───────────────────────────────────────────────────────────────
@@ -607,8 +608,7 @@ echo "Dépôt interne configuré avec succès."`;
 // ─── Onglet : Connexion APK (Alpine Linux) ───────────────────────────────────
 
 function TabConnexionAPK({ distro }) {
-  const APK_REPO_URL = import.meta.env.REACT_APP_REPO_URL || "http://localhost:80";
-  const repoLine  = `${APK_REPO_URL}/apk/${distro}/main`;
+  const repoLine  = `${REPO_URL}/apk/${distro}/main`;
   const addRepo   = `echo "${repoLine}" >> /etc/apk/repositories\napk update`;
   const fullScript = `#!/bin/sh
 # Configuration du dépôt APK interne — ${distro}
@@ -660,7 +660,7 @@ echo "Dépôt interne configuré avec succès."`;
 
         <Step number="4" title="Vérifier la configuration">
           <CodeBlock
-            code={`# Lister les sources actives\ncat /etc/apk/repositories\n\n# Vérifier l'index du dépôt privé\ncurl -s ${APK_REPO_URL}/apk/${distro}/main/x86_64/APKINDEX.tar.gz | tar -xz -O APKINDEX | head -20`}
+            code={`# Lister les sources actives\ncat /etc/apk/repositories\n\n# Vérifier l'index du dépôt privé\ncurl -s ${REPO_URL}/apk/${distro}/main/x86_64/APKINDEX.tar.gz | tar -xz -O APKINDEX | head -20`}
             label="sh"
           />
         </Step>
@@ -692,7 +692,7 @@ RUN echo "${repoLine}" >> /etc/apk/repositories \\
         <p className="font-medium">Accès réseau requis</p>
         <p className="mt-0.5">
           Le conteneur Alpine doit pouvoir atteindre{" "}
-          <code className="bg-amber-100 px-1 rounded font-mono text-xs">{APK_REPO_URL}</code>{" "}
+          <code className="bg-amber-100 px-1 rounded font-mono text-xs">{REPO_URL}</code>{" "}
           sur le réseau interne. En production, configurez le proxy ou les règles réseau en conséquence.
         </p>
       </InfoBox>
@@ -911,75 +911,33 @@ export default function ClientSetupPage() {
       </div>
 
       {/* Sélecteur de distribution */}
-      <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-4">
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-          Distribution cible — les scripts s'adaptent automatiquement
-        </p>
-
-        {/* APT */}
-        <div>
-          <p className="text-xs font-semibold text-blue-600 uppercase tracking-wider mb-2">DEB · Debian / Ubuntu</p>
-          <div className="flex flex-wrap gap-2">
-            {aptDistros.map((d) => (
-              <button key={d.id} onClick={() => handleDistroChange(d.id)}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors border ${
-                  distroId === d.id ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-600 border-gray-300 hover:border-blue-400"
-                }`}>
-                {d.label}
-              </button>
-            ))}
-          </div>
+      <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-2">
+        <div className="flex items-center justify-between">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+            Distribution cible — les scripts s'adaptent automatiquement
+          </p>
+          <span className={`text-xs font-semibold uppercase tracking-wider ${FAMILY_COLOR[family]}`}>
+            {FAMILY_LABEL[family]}
+          </span>
         </div>
-
-        {/* DNF */}
-        <div>
-          <p className="text-xs font-semibold text-orange-600 uppercase tracking-wider mb-2">RPM · RHEL / Fedora (DNF)</p>
-          <div className="flex flex-wrap gap-2">
-            {dnfDistros.map((d) => (
-              <button key={d.id} onClick={() => handleDistroChange(d.id)}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors border ${
-                  distroId === d.id ? "bg-orange-600 text-white border-orange-600" : "bg-white text-gray-600 border-gray-300 hover:border-orange-400"
-                }`}>
-                {d.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Zypper */}
-        <div>
-          <p className="text-xs font-semibold text-teal-600 uppercase tracking-wider mb-2">RPM · openSUSE (Zypper)</p>
-          <div className="flex flex-wrap gap-2">
-            {zypperDistros.map((d) => (
-              <button key={d.id} onClick={() => handleDistroChange(d.id)}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors border ${
-                  distroId === d.id ? "bg-teal-600 text-white border-teal-600" : "bg-white text-gray-600 border-gray-300 hover:border-teal-400"
-                }`}>
-                {d.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* APK — Alpine */}
-        <div>
-          <p className="text-xs font-semibold text-emerald-600 uppercase tracking-wider mb-2">APK · Alpine Linux</p>
-          <div className="flex flex-wrap gap-2">
-            {apkDistros.map((d) => (
-              <button key={d.id} onClick={() => handleDistroChange(d.id)}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors border ${
-                  distroId === d.id ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-gray-600 border-gray-300 hover:border-emerald-400"
-                }`}>
-                {d.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Badge famille sélectionnée */}
-        <p className={`text-xs font-semibold ${FAMILY_COLOR[family]}`}>
-          Famille sélectionnée : {FAMILY_LABEL[family]}
-        </p>
+        <select
+          value={distroId}
+          onChange={(e) => handleDistroChange(e.target.value)}
+          className="w-full px-3 py-2 rounded-lg text-sm font-medium border border-gray-200 text-gray-700 bg-white cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500"
+        >
+          <optgroup label="DEB · Debian / Ubuntu">
+            {aptDistros.map((d) => <option key={d.id} value={d.id}>{d.label}</option>)}
+          </optgroup>
+          <optgroup label="RPM · RHEL / Fedora (DNF)">
+            {dnfDistros.map((d) => <option key={d.id} value={d.id}>{d.label}</option>)}
+          </optgroup>
+          <optgroup label="RPM · openSUSE (Zypper)">
+            {zypperDistros.map((d) => <option key={d.id} value={d.id}>{d.label}</option>)}
+          </optgroup>
+          <optgroup label="APK · Alpine Linux">
+            {apkDistros.map((d) => <option key={d.id} value={d.id}>{d.label}</option>)}
+          </optgroup>
+        </select>
       </div>
 
       {/* Onglets */}

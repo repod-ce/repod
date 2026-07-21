@@ -185,6 +185,30 @@ export const getClamavStatus = () =>
 export const getApiBaseUrl = () => API_V1;
 export const getBaseUrl    = () => API_URL;
 
+// ─── Adresses absolues pour instructions client (autre machine/conteneur) ────
+// Contrairement à API_URL/API_V1 ci-dessus (délibérément relatifs — le
+// navigateur courant les résout tout seul via nginx), ces helpers produisent
+// une URL absolue destinée à être copiée-collée sur une AUTRE machine (apt
+// sources.list, dnf/zypper .repo, docker-compose.yml d'un service tiers...).
+// REACT_APP_REPO_URL/REACT_APP_RPM_REPO_URL restent surchargeables au build
+// (ex. domaine TLS dédié via docker-compose.tls.yml) ; à défaut, on dérive de
+// window.location plutôt que de retomber sur "localhost" — figé en dur, ça
+// désigne la machine cliente qui exécute la commande, jamais le serveur repod
+// (bug réel trouvé en direct : ClientSetupPage.js/SettingsPage.js/
+// PackageList.js dupliquaient chacun ce même repli, silencieusement faux dès
+// qu'aucune variable d'env n'était explicitement positionnée au build).
+export const getRepoUrl = () =>
+  import.meta.env.REACT_APP_REPO_URL || `${window.location.protocol}//${window.location.hostname}:80`;
+
+export const getRpmRepoUrl = () =>
+  import.meta.env.REACT_APP_RPM_REPO_URL || `${window.location.protocol}//${window.location.hostname}:8080`;
+
+// L'API est proxifiée par nginx sur le même host:port que le frontend
+// lui-même (voir frontend/nginx.conf, location /api/) — window.location.origin
+// capture ça correctement même si FRONTEND_PORT est remappé, contrairement à
+// un port codé en dur (ex. l'ancien repli "http://localhost:3003").
+export const getExternalApiUrl = () => import.meta.env.REACT_APP_API_URL || window.location.origin;
+
 // ─── Sécurité / CVE ──────────────────────────────────────────────────────────
 
 export const getPackagesPosture = (distribution = null) => {

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import toast from "react-hot-toast";
-import { listArtifacts, deleteArtifact, syncIndex, getArtifact, resolveDependencies, getApiBaseUrl, getPackageCve, getPackageDecision, getAuditLogs, getDistributions, getImportSyncStatus } from "../api";
+import { listArtifacts, deleteArtifact, syncIndex, getArtifact, resolveDependencies, getApiBaseUrl, getPackageCve, getPackageDecision, getAuditLogs, getDistributions, getImportSyncStatus, getRepoUrl } from "../api";
 import Paginator from "./Paginator";
 import { useSyncJobs } from "../context/SyncJobContext";
 
@@ -21,7 +21,7 @@ function formatStaleness(hours) {
   return `depuis ${Math.max(1, Math.floor(hours))} heure${Math.floor(hours) > 1 ? "s" : ""}`;
 }
 
-const REPO_URL     = import.meta.env.REACT_APP_REPO_URL     || "http://localhost:80";
+const REPO_URL     = getRepoUrl();
 const API_URL      = getApiBaseUrl();
 
 function formatBytes(bytes) {

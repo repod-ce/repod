@@ -12,6 +12,9 @@ import {
   generateGpgKey,
   listGroups,
   listUsers,
+  getRepoUrl,
+  getRpmRepoUrl,
+  getExternalApiUrl,
 } from "../api";
 
 const API_URL = getApiBaseUrl();
@@ -1471,9 +1474,9 @@ WEBHOOK_SECRET=<secret-partagé-avec-github>
 
 function ContainersSection() {
   const [activeTab, setActiveTab] = useState("apt");
-  const REPO_URL     = import.meta.env.REACT_APP_REPO_URL     || "http://localhost:80";
-  const RPM_REPO_URL = import.meta.env.REACT_APP_RPM_REPO_URL || "http://localhost:8080";
-  const API_URL      = import.meta.env.REACT_APP_API_URL      || "http://localhost:3003";
+  const REPO_URL     = getRepoUrl();
+  const RPM_REPO_URL = getRpmRepoUrl();
+  const API_URL      = getExternalApiUrl();
 
   const copy = (text) => {
     navigator.clipboard.writeText(text).then(
