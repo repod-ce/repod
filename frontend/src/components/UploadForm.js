@@ -247,6 +247,7 @@ export default function UploadForm() {
   const debDists = distributions.filter((d) => d.format === "deb");
   const rpmDists = distributions.filter((d) => d.format === "rpm");
   const apkDists = distributions.filter((d) => d.format === "apk");
+  const currentFmt = distributions.find((d) => d.codename === distribution)?.format || "deb";
 
   const addOrUpdateStep = (step) => setSteps((prev) => {
     const idx = prev.findIndex((s) => s.name === step.name);
@@ -370,53 +371,37 @@ export default function UploadForm() {
       </div>
 
       {/* Distribution */}
-      <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
-        <label className="block text-sm font-medium text-gray-700">Distribution cible</label>
-
-        {debDists.length > 0 && (
-          <div>
-            <p className="text-xs font-semibold text-blue-500 uppercase tracking-wider mb-1.5">APT — Debian / Ubuntu</p>
-            <div className="flex flex-wrap gap-2">
-              {debDists.map((d) => (
-                <button key={d.codename} type="button" onClick={() => !uploading && setDistribution(d.codename)} disabled={uploading}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors disabled:opacity-50
-                    ${distribution === d.codename ? "bg-blue-600 text-white border-blue-600" : "text-gray-600 border-gray-200 hover:border-blue-400 hover:text-blue-600"}`}>
-                  {d.name}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {rpmDists.length > 0 && (
-          <div>
-            <p className="text-xs font-semibold text-orange-500 uppercase tracking-wider mb-1.5">RPM — RHEL / Fedora / openSUSE</p>
-            <div className="flex flex-wrap gap-2">
-              {rpmDists.map((d) => (
-                <button key={d.codename} type="button" onClick={() => !uploading && setDistribution(d.codename)} disabled={uploading}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors disabled:opacity-50
-                    ${distribution === d.codename ? "bg-orange-600 text-white border-orange-600" : "text-gray-600 border-gray-200 hover:border-orange-400 hover:text-orange-600"}`}>
-                  {d.name}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {apkDists.length > 0 && (
-          <div>
-            <p className="text-xs font-semibold text-emerald-600 uppercase tracking-wider mb-1.5">APK — Alpine Linux</p>
-            <div className="flex flex-wrap gap-2">
-              {apkDists.map((d) => (
-                <button key={d.codename} type="button" onClick={() => !uploading && setDistribution(d.codename)} disabled={uploading}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors disabled:opacity-50
-                    ${distribution === d.codename ? "bg-emerald-600 text-white border-emerald-600" : "text-gray-600 border-gray-200 hover:border-emerald-400 hover:text-emerald-600"}`}>
-                  {d.name}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
+      <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-2">
+        <div className="flex items-center justify-between">
+          <label className="block text-sm font-medium text-gray-700">Distribution cible</label>
+          <span className={`text-xs font-semibold uppercase tracking-wider ${
+            currentFmt === "deb" ? "text-blue-500" : currentFmt === "rpm" ? "text-orange-500" : "text-emerald-600"
+          }`}>
+            {currentFmt === "deb" ? "APT" : currentFmt === "rpm" ? "RPM" : "APK"}
+          </span>
+        </div>
+        <select
+          value={distribution}
+          onChange={(e) => setDistribution(e.target.value)}
+          disabled={uploading}
+          className="w-full px-3 py-2 rounded-lg text-sm font-medium border border-gray-200 text-gray-700 bg-white cursor-pointer disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500"
+        >
+          {debDists.length > 0 && (
+            <optgroup label="APT — Debian / Ubuntu">
+              {debDists.map((d) => <option key={d.codename} value={d.codename}>{d.name}</option>)}
+            </optgroup>
+          )}
+          {rpmDists.length > 0 && (
+            <optgroup label="RPM — RHEL / Fedora / openSUSE">
+              {rpmDists.map((d) => <option key={d.codename} value={d.codename}>{d.name}</option>)}
+            </optgroup>
+          )}
+          {apkDists.length > 0 && (
+            <optgroup label="APK — Alpine Linux">
+              {apkDists.map((d) => <option key={d.codename} value={d.codename}>{d.name}</option>)}
+            </optgroup>
+          )}
+        </select>
       </div>
 
       {/* Drop zone */}
