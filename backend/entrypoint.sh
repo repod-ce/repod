@@ -94,6 +94,18 @@ elif [ -n "$GNUPG_DIR" ]; then
     mkdir -p "$GNUPG_DIR" && chown appuser:appuser "$GNUPG_DIR" && chmod 700 "$GNUPG_DIR" || true
 fi
 
+# Templates email — services/email_templates.py:_ensure_defaults() les crée
+# lui-même à la volée au premier GET /templates, mais fait un mkdir(parents=True)
+# depuis appuser : jamais présent dans aucun bind mount déclaré par
+# docker-compose.yaml (contrairement à pool/dists/manifests/...), donc
+# /repos/templates n'existe pas encore au premier démarrage et /repos lui-même
+# n'est pas writable par appuser (root:root 755) — la création échoue avec
+# PermissionError, jamais rattrapée, et la page Templates email reste
+# silencieusement vide (l'erreur 500 n'est pas affichée, juste catch{} côté
+# frontend). Pré-créer le répertoire ici, comme pour GNUPG_DIR ci-dessus.
+TEMPLATES_DIR="${EMAIL_TEMPLATES_DIR:-/repos/templates/email}"
+mkdir -p "$TEMPLATES_DIR" && chown -R appuser:appuser "$(dirname "$TEMPLATES_DIR")" || true
+
 # settings.json et son répertoire parent
 SETTINGS_FILE="${SETTINGS_PATH:-/repos/settings.json}"
 SETTINGS_DIR="$(dirname "$SETTINGS_FILE")"
