@@ -292,25 +292,29 @@ const FMT_META = {
 };
 
 function DistSelector({ distribution, onChange }) {
+  const currentFmt = DISTRIBUTIONS.find(d => d.codename === distribution)?.format || "deb";
+  const meta = FMT_META[currentFmt];
   return (
-    <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
-      <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">Distribution cible</p>
-      {["deb","rpm","apk"].map(fmt => {
-        const meta = FMT_META[fmt];
-        return (
-          <div key={fmt}>
-            <p className={`text-[10px] font-bold uppercase tracking-widest mb-1.5 ${meta.accent}`}>{meta.label}</p>
-            <div className="flex flex-wrap gap-1.5">
-              {DISTRIBUTIONS.filter(d => d.format === fmt).map(d => (
-                <button key={d.codename} type="button" onClick={() => onChange(d.codename)}
-                  className={`px-2.5 py-1 rounded text-xs font-medium border transition-colors ${
-                    distribution === d.codename ? meta.activeBg : `text-gray-500 border-gray-200 ${meta.hover}`
-                  }`}>{d.label}</button>
-              ))}
-            </div>
-          </div>
-        );
-      })}
+    <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-2">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">Distribution cible</p>
+        <span className={`text-[10px] font-bold uppercase tracking-widest ${meta.accent}`}>
+          {currentFmt === "deb" ? "APT" : currentFmt === "rpm" ? "RPM" : "APK"}
+        </span>
+      </div>
+      <select
+        value={distribution}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full px-3 py-2 rounded-lg text-sm font-medium border border-gray-200 text-gray-700 bg-white cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500"
+      >
+        {["deb", "rpm", "apk"].map(fmt => (
+          <optgroup key={fmt} label={FMT_META[fmt].label}>
+            {DISTRIBUTIONS.filter(d => d.format === fmt).map(d => (
+              <option key={d.codename} value={d.codename}>{d.label}</option>
+            ))}
+          </optgroup>
+        ))}
+      </select>
     </div>
   );
 }
@@ -574,45 +578,7 @@ function BatchImportTab() {
         Entrez un paquet par ligne (ou séparés par des virgules). Maximum 50 paquets par import.
       </div>
 
-      {/* Distribution */}
-      <div>
-        <p className="text-sm font-medium text-gray-700 mb-2">Distribution cible</p>
-        <div className="space-y-2">
-          <div className="flex flex-wrap gap-1.5">
-            {DISTRIBUTIONS.filter((d) => d.format === "deb").map((d) => (
-              <button key={d.codename} type="button"
-                onClick={() => setDistribution(d.codename)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
-                  distribution === d.codename
-                    ? "bg-blue-600 text-white border-blue-600"
-                    : "text-gray-500 border-gray-200 hover:border-blue-400 hover:text-blue-600"
-                }`}>{d.label}</button>
-            ))}
-          </div>
-          <div className="flex flex-wrap gap-1.5">
-            {DISTRIBUTIONS.filter((d) => d.format === "rpm").map((d) => (
-              <button key={d.codename} type="button"
-                onClick={() => setDistribution(d.codename)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
-                  distribution === d.codename
-                    ? "bg-orange-600 text-white border-orange-600"
-                    : "text-gray-500 border-gray-200 hover:border-orange-400 hover:text-orange-600"
-                }`}>{d.label}</button>
-            ))}
-          </div>
-          <div className="flex flex-wrap gap-1.5">
-            {DISTRIBUTIONS.filter((d) => d.format === "apk").map((d) => (
-              <button key={d.codename} type="button"
-                onClick={() => setDistribution(d.codename)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
-                  distribution === d.codename
-                    ? "bg-emerald-600 text-white border-emerald-600"
-                    : "text-gray-500 border-gray-200 hover:border-emerald-400 hover:text-emerald-600"
-                }`}>{d.label}</button>
-            ))}
-          </div>
-        </div>
-      </div>
+      <DistSelector distribution={distribution} onChange={setDistribution} />
 
       <ArchSelector
         format={DISTRIBUTIONS.find((d) => d.codename === distribution)?.format || "deb"}
