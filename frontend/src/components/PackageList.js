@@ -3,6 +3,7 @@ import toast from "react-hot-toast";
 import { listArtifacts, deleteArtifact, syncIndex, getArtifact, resolveDependencies, getApiBaseUrl, getPackageCve, getPackageDecision, getAuditLogs, getDistributions, getImportSyncStatus, getRepoUrl } from "../api";
 import Paginator from "./Paginator";
 import { useSyncJobs } from "../context/SyncJobContext";
+import { copyToClipboard as copyToClipboardSafe } from "../utils/clipboard";
 
 // Seuil de fraîcheur de l'index externe (paquets/dépendances importables) : au-delà, on
 // propose une synchro (bandeau discret) plutôt que de la relancer à chaque visite de la
@@ -39,7 +40,7 @@ function formatDate(iso) {
 }
 
 function copyToClipboard(text) {
-  navigator.clipboard.writeText(text).then(
+  copyToClipboardSafe(text).then(
     () => toast.success("Commande copiée"),
     () => toast.error("Impossible de copier")
   );

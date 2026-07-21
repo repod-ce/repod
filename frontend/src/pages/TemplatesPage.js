@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import toast from "react-hot-toast";
+import { copyToClipboard } from "../utils/clipboard";
 import { listEmailTemplates, getEmailTemplate, updateEmailTemplate, resetEmailTemplate, previewEmailTemplate } from "../api";
 
 const TEMPLATE_ICONS = {
@@ -172,8 +173,10 @@ export default function TemplatesPage() {
                       <span key={v}
                         className="text-[11px] font-mono px-2 py-0.5 bg-slate-100 text-slate-600 rounded cursor-pointer hover:bg-blue-100 hover:text-blue-700 transition-colors"
                         onClick={() => {
-                          navigator.clipboard.writeText(`{{ ${v} }}`);
-                          toast.success(`{{ ${v} }} copie`);
+                          copyToClipboard(`{{ ${v} }}`).then(
+                            () => toast.success(`{{ ${v} }} copie`),
+                            () => toast.error("Impossible de copier")
+                          );
                         }}
                         title={`Cliquer pour copier {{ ${v} }}`}
                       >

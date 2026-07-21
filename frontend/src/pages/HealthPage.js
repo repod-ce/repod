@@ -5,6 +5,7 @@ import {
   getGrypeUpdateUrl, getFeedsRefreshUrl, getClamavUpdateUrl,
 } from "../api";
 import { useAuth } from "../context/AuthContext";
+import { copyToClipboard } from "../utils/clipboard";
 
 function StatusBadge({ status }) {
   const cfg = {
@@ -448,7 +449,7 @@ const BASE_URL = getBaseUrl();
 function CopyButton({ text }) {
   const [copied, setCopied] = useState(false);
   const handle = () => {
-    navigator.clipboard.writeText(text).then(() => {
+    copyToClipboard(text).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });

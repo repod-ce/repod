@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import toast from "react-hot-toast";
 import HelpTooltip from "../components/HelpTooltip";
+import { copyToClipboard } from "../utils/clipboard";
 import {
   getSettings,
   patchSettings,
@@ -1291,7 +1292,7 @@ function CopySnippet({ code }) {
         {code}
       </pre>
       <button
-        onClick={() => { navigator.clipboard.writeText(code); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
+        onClick={() => { copyToClipboard(code).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); }, () => toast.error("Impossible de copier")); }}
         className="absolute top-2 right-2 px-2 py-1 bg-gray-700 hover:bg-gray-600 text-gray-300 text-xs rounded transition-colors"
       >
         {copied ? "✓ Copié" : "Copier"}
@@ -1479,7 +1480,7 @@ function ContainersSection() {
   const API_URL      = getExternalApiUrl();
 
   const copy = (text) => {
-    navigator.clipboard.writeText(text).then(
+    copyToClipboard(text).then(
       () => toast.success("Copié"),
       () => toast.error("Impossible de copier")
     );
@@ -1787,7 +1788,7 @@ function GpgSection() {
                       {gpg.public_key_armored}
                     </pre>
                     <button
-                      onClick={() => { navigator.clipboard.writeText(gpg.public_key_armored); toast.success("Clé copiée"); }}
+                      onClick={() => copyToClipboard(gpg.public_key_armored).then(() => toast.success("Clé copiée"), () => toast.error("Impossible de copier"))}
                       className="absolute top-2 right-2 px-2 py-1 bg-gray-700 text-gray-300 text-xs rounded hover:bg-gray-600">
                       Copier
                     </button>
