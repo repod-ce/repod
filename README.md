@@ -376,9 +376,9 @@ comment pointing back to it.
 | `POSTGRES_PASSWORD` | PostgreSQL password — the actual source of truth for the DB password; feeds both the `db` service (initializes Postgres with it) and the `backend` service's `DATABASE_URL` (reconstructed from it), keeping the two in sync automatically. **Change from the default in production** |
 | `JWT_SECRET_KEY` | Token signing secret — **required in production** (`docker-compose.yaml` hardcodes `ENV=production`, and the backend refuses to start if this is left at `change-me-in-production`). This is where it takes effect — see the precedence note above |
 | `CORS_ORIGINS` | Comma-separated allowed origins. Same precedence note as `JWT_SECRET_KEY` above |
-| `REACT_APP_API_URL` | Leave empty unless building the frontend from source (`docker-compose.build.yml`) — non-empty bakes an absolute URL into the JS bundle and breaks cross-host access |
-| `REACT_APP_REPO_URL` | Same "build from source only" caveat — public URL of the repo (apt-repo), used to construct client install instructions in the UI |
-| `REACT_APP_RPM_REPO_URL` | Same "build from source only" caveat, RPM repo equivalent of `REACT_APP_REPO_URL` |
+| `REACT_APP_API_URL` | Only used when building the frontend from source (`docker-compose.build.yml`) — leave empty (default), non-empty bakes an absolute URL into the JS bundle and breaks cross-host access |
+| `REACT_APP_REPO_URL` | Same "build from source only" caveat. Leave empty (default) — the frontend derives the apt-repo's public URL from `window.location` at runtime for client install instructions. Only set explicitly if `APT_PORT` is remapped away from `80` |
+| `REACT_APP_RPM_REPO_URL` | Same as `REACT_APP_REPO_URL`, RPM repo equivalent — leave empty unless `RPM_REPO_PORT` is remapped away from `8080` |
 | `REPOD_VERSION` | Image tag to pull (`latest`, `v1.2.3`…) |
 | `BIND_HOST` | `0.0.0.0` (default, ports reachable externally) or `127.0.0.1` (reverse-proxy setups — ports host-only) |
 | `FRONTEND_PORT` | Host port for the frontend (default `3003`) |
