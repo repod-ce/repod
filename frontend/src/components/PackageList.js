@@ -936,13 +936,14 @@ export default function PackageList() {
             </p>
           </div>
           <button onClick={handleSync} disabled={syncing}
+            title="Reconstruit la liste depuis les paquets déjà présents dans le dépôt — à utiliser seulement si un paquet existe mais n'apparaît pas ici."
             className="flex items-center gap-2 px-3 py-2 text-sm text-gray-600 border rounded-lg
                        hover:bg-gray-50 disabled:opacity-40 transition-colors">
-            <svg className={`w-4 h-4 ${syncing ? "animate-spin" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg className={`w-4 h-4 ${syncing ? "animate-pulse" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                d="M11.42 15.17L17.25 21A2.652 2.652 0 0021 17.25l-5.877-5.877M11.42 15.17l2.496-3.03c.317-.384.74-.626 1.208-.766M11.42 15.17l-4.655 5.653a2.548 2.548 0 11-3.586-3.586l6.837-5.63m5.108-.233c.55-.164 1.163-.188 1.743-.14a4.5 4.5 0 004.486-6.336l-3.276 3.277a3.004 3.004 0 01-2.25-2.25l3.276-3.276a4.5 4.5 0 00-6.336 4.486c.091 1.076-.071 2.264-.904 2.95l-.102.085m-1.745 1.437L5.909 7.5H4.5L2.25 3.75l1.5-1.5L7.5 4.5v1.409l4.26 4.26m-1.745 1.437l1.745-1.437m6.615 8.206L15.75 15.75M4.867 19.125h.008v.008h-.008v-.008z" />
             </svg>
-            {syncing ? "Sync..." : "Sync index"}
+            {syncing ? "Réparation..." : "Réparer l'index"}
           </button>
         </div>
 
@@ -954,7 +955,7 @@ export default function PackageList() {
                   d="M12 9v3.75m0 3.75h.008v.008H12v-.008zM10.29 3.86L1.82 18a1.5 1.5 0 001.29 2.25h17.78a1.5 1.5 0 001.29-2.25L13.71 3.86a1.5 1.5 0 00-2.42 0z" />
               </svg>
               <span>
-                Index de paquets externes non synchronisé {formatStaleness(oldestSyncHours)} — une dépendance
+                Index des sources externes non synchronisé {formatStaleness(oldestSyncHours)} — une dépendance
                 récemment publiée pourrait être introuvable lors d'un import.
               </span>
             </div>
