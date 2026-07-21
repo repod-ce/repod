@@ -1,6 +1,7 @@
 import { useState } from "react";
 import toast from "react-hot-toast";
 import { getRepoUrl, getRpmRepoUrl } from "../api";
+import { copyToClipboard } from "../utils/clipboard";
 
 const REPO_URL     = getRepoUrl();
 const RPM_REPO_URL = getRpmRepoUrl();
@@ -10,7 +11,7 @@ const REPO_HOST    = REPO_URL.replace(/^https?:\/\//, "").replace(/:\d+$/, "");
 
 function CodeBlock({ code, label }) {
   const copy = () => {
-    navigator.clipboard.writeText(code).then(
+    copyToClipboard(code).then(
       () => toast.success("Copié"),
       () => toast.error("Impossible de copier")
     );
@@ -78,7 +79,7 @@ function InfoBox({ type = "info", children }) {
 // ─── Onglet 1 : Connexion au dépôt ───────────────────────────────────────────
 
 function TabConnexion({ distro }) {
-  const gpgCmd = `curl -fsSL ${REPO_URL}/repos/depot.gpg | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/depot-interne.gpg`;
+  const gpgCmd = `curl -fsSL ${REPO_URL}/repos/dists/depot.gpg | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/depot-interne.gpg`;
   const addSourceCmd = `echo "deb [signed-by=/etc/apt/trusted.gpg.d/depot-interne.gpg] ${REPO_URL}/repos ${distro} main" \\
   | sudo tee /etc/apt/sources.list.d/depot-interne.list`;
 
@@ -87,7 +88,7 @@ function TabConnexion({ distro }) {
 # Exécuter en tant que root ou avec sudo
 
 # 1. Importer la clé GPG de signature
-curl -fsSL ${REPO_URL}/repos/depot.gpg | \\
+curl -fsSL ${REPO_URL}/repos/dists/depot.gpg | \\
   sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/depot-interne.gpg
 
 # 2. Ajouter le dépôt interne
@@ -230,7 +231,7 @@ curl -v --max-time 5 http://archive.ubuntu.com/ubuntu/ 2>&1 | grep -E "connect|r
 # Résultat attendu : "Connection refused" ou "timed out"
 
 # Tester que le dépôt interne est toujours accessible
-curl -v --max-time 5 ${REPO_URL}/repos/depot.gpg 2>&1 | grep -E "200|OK"
+curl -v --max-time 5 ${REPO_URL}/repos/dists/depot.gpg 2>&1 | grep -E "200|OK"
 # Résultat attendu : "200 OK"`;
 
   return (

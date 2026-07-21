@@ -1518,7 +1518,7 @@ services:
 # ARG APT_REPO_URL
 # ARG APT_DISTRO
 # RUN apt-get update && apt-get install -y curl gnupg && \\
-#     curl -fsSL \${APT_REPO_URL}/repos/depot.gpg | \\
+#     curl -fsSL \${APT_REPO_URL}/repos/dists/depot.gpg | \\
 #       gpg --dearmor -o /etc/apt/trusted.gpg.d/repod.gpg && \\
 #     echo "deb [signed-by=/etc/apt/trusted.gpg.d/repod.gpg] \\
 #       \${APT_REPO_URL}/repos \${APT_DISTRO} main" > \\
@@ -1584,7 +1584,7 @@ services:
     command: |
       bash -c "
         apt-get update && apt-get install -y curl gnupg
-        curl -fsSL $$APT_REPO_URL/repos/depot.gpg | \\
+        curl -fsSL $$APT_REPO_URL/repos/dists/depot.gpg | \\
           gpg --dearmor -o /etc/apt/trusted.gpg.d/repod.gpg
         echo \"deb [signed-by=/etc/apt/trusted.gpg.d/repod.gpg] \\
           $$APT_REPO_URL/repos $$APT_DISTRO main\" > \\
