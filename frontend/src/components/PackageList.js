@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import toast from "react-hot-toast";
-import { listArtifacts, deleteArtifact, syncIndex, getArtifact, resolveDependencies, getApiBaseUrl, getPackageCve, getPackageDecision, getAuditLogs, getDistributions, getImportSyncStatus, getRepoUrl } from "../api";
+import { listArtifacts, deleteArtifact, syncIndex, reenrichCve, getArtifact, resolveDependencies, getApiBaseUrl, getPackageCve, getPackageDecision, getAuditLogs, getDistributions, getImportSyncStatus, getRepoUrl } from "../api";
 import Paginator from "./Paginator";
 import { useSyncJobs } from "../context/SyncJobContext";
 import { copyToClipboard as copyToClipboardSafe } from "../utils/clipboard";
@@ -746,6 +746,7 @@ export default function PackageList() {
   const [loading, setLoading]             = useState(true);
   const [deleting, setDeleting]           = useState("");
   const [syncing, setSyncing]             = useState(false);
+  const [reenriching, setReenriching]     = useState(false);
   const [inspecting, setInspecting]       = useState(null);
   const [resolving, setResolving]         = useState(null);
   const [checkedKeys, setChecked]         = useState(new Set()); // suppression multiple — clé pkg.name
@@ -902,6 +903,18 @@ export default function PackageList() {
     }
   };
 
+  const handleReenrichCve = async () => {
+    setReenriching(true);
+    try {
+      await reenrichCve();
+      toast.success("Ré-enrichissement EPSS/KEV lancé en arrière-plan — les scores se mettront à jour d'ici quelques instants.");
+    } catch {
+      toast.error("Échec du ré-enrichissement");
+    } finally {
+      setReenriching(false);
+    }
+  };
+
   const handleResolved = useCallback((hadErrors) => {
     setResolving(null);
     fetchPackages();
@@ -936,16 +949,28 @@ export default function PackageList() {
               {pagination.total} paquet{pagination.total !== 1 ? "s" : ""} — .deb (apt) et .rpm (dnf / zypper)
             </p>
           </div>
-          <button onClick={handleSync} disabled={syncing}
-            title="Reconstruit la liste depuis les paquets déjà présents dans le dépôt — à utiliser seulement si un paquet existe mais n'apparaît pas ici."
-            className="flex items-center gap-2 px-3 py-2 text-sm text-gray-600 border rounded-lg
-                       hover:bg-gray-50 disabled:opacity-40 transition-colors">
-            <svg className={`w-4 h-4 ${syncing ? "animate-pulse" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M11.42 15.17L17.25 21A2.652 2.652 0 0021 17.25l-5.877-5.877M11.42 15.17l2.496-3.03c.317-.384.74-.626 1.208-.766M11.42 15.17l-4.655 5.653a2.548 2.548 0 11-3.586-3.586l6.837-5.63m5.108-.233c.55-.164 1.163-.188 1.743-.14a4.5 4.5 0 004.486-6.336l-3.276 3.277a3.004 3.004 0 01-2.25-2.25l3.276-3.276a4.5 4.5 0 00-6.336 4.486c.091 1.076-.071 2.264-.904 2.95l-.102.085m-1.745 1.437L5.909 7.5H4.5L2.25 3.75l1.5-1.5L7.5 4.5v1.409l4.26 4.26m-1.745 1.437l1.745-1.437m6.615 8.206L15.75 15.75M4.867 19.125h.008v.008h-.008v-.008z" />
-            </svg>
-            {syncing ? "Réparation..." : "Réparer l'index"}
-          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={handleReenrichCve} disabled={reenriching}
+              title="Rafraîchit les scores EPSS/KEV des CVE déjà détectées avec le cache local le plus récent, sans relancer de scan Grype — utile pour les paquets scannés avant qu'une CVE récente n'ait de score."
+              className="flex items-center gap-2 px-3 py-2 text-sm text-gray-600 border rounded-lg
+                         hover:bg-gray-50 disabled:opacity-40 transition-colors">
+              <svg className={`w-4 h-4 ${reenriching ? "animate-pulse" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0112 15a9.065 9.065 0 00-6.23-.693L5 14.5m14.8.8l1.402 1.402c1.232 1.232.65 3.318-1.067 3.611A48.309 48.309 0 0112 21c-2.427 0-4.817-.178-7.135-.521-1.717-.293-2.3-2.379-1.067-3.611L5 14.5" />
+              </svg>
+              {reenriching ? "Lancement..." : "Rafraîchir EPSS/KEV"}
+            </button>
+            <button onClick={handleSync} disabled={syncing}
+              title="Reconstruit la liste depuis les paquets déjà présents dans le dépôt — à utiliser seulement si un paquet existe mais n'apparaît pas ici."
+              className="flex items-center gap-2 px-3 py-2 text-sm text-gray-600 border rounded-lg
+                         hover:bg-gray-50 disabled:opacity-40 transition-colors">
+              <svg className={`w-4 h-4 ${syncing ? "animate-pulse" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M11.42 15.17L17.25 21A2.652 2.652 0 0021 17.25l-5.877-5.877M11.42 15.17l2.496-3.03c.317-.384.74-.626 1.208-.766M11.42 15.17l-4.655 5.653a2.548 2.548 0 11-3.586-3.586l6.837-5.63m5.108-.233c.55-.164 1.163-.188 1.743-.14a4.5 4.5 0 004.486-6.336l-3.276 3.277a3.004 3.004 0 01-2.25-2.25l3.276-3.276a4.5 4.5 0 00-6.336 4.486c.091 1.076-.071 2.264-.904 2.95l-.102.085m-1.745 1.437L5.909 7.5H4.5L2.25 3.75l1.5-1.5L7.5 4.5v1.409l4.26 4.26m-1.745 1.437l1.745-1.437m6.615 8.206L15.75 15.75M4.867 19.125h.008v.008h-.008v-.008z" />
+              </svg>
+              {syncing ? "Réparation..." : "Réparer l'index"}
+            </button>
+          </div>
         </div>
 
         {indexStale && (

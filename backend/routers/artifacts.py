@@ -39,8 +39,8 @@ from services.audit_export import (
 )
 from services.distributions import remove_package as _repo_remove_package
 from services.format_router import ACCEPTED_EXTENSIONS as _ACCEPTED_EXTS
-from services.format_router import is_apt as _is_apt
 from services.format_router import find_pool_file as _find_pool_file
+from services.format_router import is_apt as _is_apt
 from services.indexer import (
     get_index,
     get_package_info,
@@ -48,7 +48,12 @@ from services.indexer import (
     remove_from_index,
     sync_index_from_pool,
 )
-from services.manifest import delete_manifest_from_db, list_manifests, load_manifest
+from services.manifest import (
+    delete_manifest_from_db,
+    list_manifests,
+    load_manifest,
+    reenrich_manifest_cve,
+)
 from services.pagination import paginate
 from services.path_safety import safe_path_join_http
 from services.pending_promotions import get_pending, list_pending
@@ -1069,6 +1074,27 @@ def sync_index(current_user: str = Depends(get_maintainer_user)):
     count = sync_index_from_pool()
     audit_log("SYNC", current_user, "SUCCESS", detail=f"{count} paquets indexés")
     return {"status": "ok", "packages_indexed": count}
+
+
+@router.post("/admin/reenrich-cve", status_code=202)
+def reenrich_cve(current_user: str = Depends(get_maintainer_user)):
+    """
+    Ré-enrichit les CVE déjà scannées de tous les paquets avec les scores
+    EPSS/KEV actuels, sans relancer Grype — voir
+    services/manifest.py:reenrich_manifest_cve() pour le raisonnement complet.
+    """
+    import threading
+
+    def _run():
+        try:
+            result = reenrich_manifest_cve()
+            audit_log("REENRICH_CVE", current_user, "SUCCESS", detail=str(result))
+            logger.info(f"[reenrich-cve] Terminé : {result}")
+        except Exception as e:
+            logger.error(f"[reenrich-cve] Erreur : {e}")
+
+    threading.Thread(target=_run, daemon=True).start()
+    return {"message": "Ré-enrichissement des CVE lancé en arrière-plan"}
 
 
 @router.get("/admin/index")

@@ -22,11 +22,11 @@ manuel pour sortir de l'état "Non disponible" sur une instance neuve.
 import logging
 from datetime import datetime, timezone
 
-from services.package_index import DEFAULT_SOURCES, sync_source
 from services.audit import log as audit_log
-from services.settings import get_settings
+from services.cve_enrichment import refresh_epss_bulk, refresh_kev
 from services.grype_db import update_grype_db
-from services.cve_enrichment import refresh_kev, refresh_epss_bulk
+from services.package_index import DEFAULT_SOURCES, sync_source
+from services.settings import get_settings
 
 logger = logging.getLogger("security_sync")
 
@@ -95,6 +95,20 @@ def run_security_sync() -> dict:
     else:
         logger.warning("[security_sync] ⚠️ Mise à jour EPSS impossible (cache conservé).")
         audit_log("EPSS_UPDATE", "scheduler", "WARNING", detail="API FIRST.org injoignable, cache conservé")
+
+    # Ré-enrichissement des manifests déjà scannés avec le cache EPSS/KEV
+    # qu'on vient de rafraîchir ci-dessus — sans ça, une CVE trop récente
+    # pour avoir un score au moment du scan initial reste bloquée à 0 %
+    # indéfiniment (voir services/manifest.py:reenrich_manifest_cve()).
+    logger.info("[security_sync] Ré-enrichissement des CVE des manifests...")
+    try:
+        from services.manifest import reenrich_manifest_cve
+        reenrich_result = reenrich_manifest_cve()
+        logger.info(f"[security_sync] ✅ CVE ré-enrichies — {reenrich_result}")
+        audit_log("REENRICH_CVE", "scheduler", "SUCCESS", detail=str(reenrich_result))
+    except Exception as exc:
+        logger.warning(f"[security_sync] ⚠️ Ré-enrichissement des CVE échoué : {exc}")
+        audit_log("REENRICH_CVE", "scheduler", "WARNING", detail=str(exc)[:500])
 
     results = []
     total_ok = 0

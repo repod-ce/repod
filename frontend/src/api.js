@@ -108,6 +108,9 @@ export const deleteArtifact = (name, version = null) => {
 export const syncIndex = () =>
   api.post("/artifacts/admin/sync-index").then((r) => r.data);
 
+export const reenrichCve = () =>
+  api.post("/artifacts/admin/reenrich-cve").then((r) => r.data);
+
 export const installPackage = (name) =>
   api.post("/packages/install/", { name }).then((r) => r.data);
 

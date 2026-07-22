@@ -16,11 +16,16 @@ la première récupération.
 import json
 import logging
 import os
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import requests
-from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 logger = logging.getLogger("cve_enrichment")
 
@@ -83,7 +88,8 @@ def _get_with_retry(url: str, **kwargs) -> requests.Response:
 
 def _save_json(path: Path, data: dict) -> None:
     """Écriture atomique via tempfile + os.replace — résistant aux permissions root sur le fichier."""
-    import tempfile, os
+    import os
+    import tempfile
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".tmp_")
     try:
@@ -312,7 +318,11 @@ def trurisk_label(score: float) -> str:
 
 # ─── Enrichissement d'une liste de CVE ───────────────────────────────────────
 
-def enrich_cve_list(cve_list: list[dict]) -> list[dict]:
+def enrich_cve_list(
+    cve_list: list[dict],
+    epss_map: dict[str, dict] | None = None,
+    kev_set: set[str] | None = None,
+) -> list[dict]:
     """
     Enrichit chaque CVE de la liste avec :
       - epss          : score brut (float 0.0–1.0)
@@ -321,19 +331,25 @@ def enrich_cve_list(cve_list: list[dict]) -> list[dict]:
       - in_kev        : bool — activement exploitée (CISA KEV)
 
     Modifie la liste en place et la retourne.
+
+    epss_map/kev_set : à fournir pré-récupérés pour ré-enrichir un grand
+    nombre de listes sans relire le cache disque à chaque appel (voir
+    reenrich_manifest_cve() dans services/manifest.py) — laissé à None pour
+    l'usage normal (une seule liste), qui les récupère lui-même comme avant.
     """
     if not cve_list:
         return cve_list
 
     cve_ids = [c["id"] for c in cve_list if c.get("id")]
 
-    try:
-        kev_set    = get_kev_set()
-        epss_map   = get_epss_scores(cve_ids)
-    except Exception as e:
-        logger.warning(f"[enrich] Enrichissement partiel ou ignoré : {e}")
-        kev_set  = set()
-        epss_map = {}
+    if epss_map is None or kev_set is None:
+        try:
+            kev_set  = get_kev_set()
+            epss_map = get_epss_scores(cve_ids)
+        except Exception as e:
+            logger.warning(f"[enrich] Enrichissement partiel ou ignoré : {e}")
+            kev_set  = set()
+            epss_map = {}
 
     for cve in cve_list:
         cid        = cve.get("id", "")

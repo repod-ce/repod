@@ -23,10 +23,11 @@ TTL configurable via MANIFEST_CACHE_TTL (secondes, défaut : 30).
 Invalidé automatiquement par save_manifest().
 Thread-safe via RLock sur le cache uniquement.
 """
-import json
 import hashlib
-import subprocess
+import json
+import logging
 import os
+import subprocess
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -35,7 +36,9 @@ from threading import RLock
 from sqlalchemy import text
 
 from db.engine import db_conn
-from services.path_safety import safe_path_join, PathTraversalError
+from services.path_safety import PathTraversalError, safe_path_join
+
+logger = logging.getLogger("manifest")
 
 MANIFEST_DIR = Path(os.getenv("MANIFEST_DIR", "/repos/manifests"))
 MANIFEST_DIR.mkdir(parents=True, exist_ok=True)
@@ -47,7 +50,7 @@ def _get_default_distribution() -> str:
 
 
 def _get_pkg_type() -> str:
-    from services.format_router import is_rpm, REPO_FORMAT
+    from services.format_router import REPO_FORMAT, is_rpm
     if REPO_FORMAT == "apk":
         return "apk"
     return "rpm" if is_rpm() else "deb"
@@ -328,7 +331,8 @@ def generate_manifest(
     cve_results: list[dict] | None = None,
     distribution: str | None = None,
 ) -> dict:
-    from services.format_router import is_rpm as _is_rpm, DEFAULT_DISTRIBUTION
+    from services.format_router import DEFAULT_DISTRIBUTION
+    from services.format_router import is_rpm as _is_rpm
 
     dist = distribution if distribution is not None else DEFAULT_DISTRIBUTION
 
@@ -664,3 +668,60 @@ def count_manifests_in_db() -> int:
             return conn.execute(text("SELECT COUNT(*) FROM manifests")).scalar() or 0
     except Exception:
         return 0
+
+
+def reenrich_manifest_cve() -> dict:
+    """
+    Ré-enrichit les cve_results de tous les manifests déjà scannés avec les
+    scores EPSS/KEV/TruRisk actuels du cache local, sans jamais relancer un
+    scan Grype — la liste des CVE elle-même et leur description ne
+    changent pas, ces deux champs ne viennent que d'un scan Grype réel.
+
+    Bug réel qui motive cette fonction : l'enrichissement EPSS/KEV est
+    calculé UNE SEULE FOIS, au moment du scan, puis figé indéfiniment dans
+    le manifest. Une CVE trop récente pour avoir un score EPSS à ce
+    moment-là reste bloquée à 0 % pour toujours, même après que le cache
+    EPSS (rafraîchi quotidiennement par security_sync_daily) obtient la
+    vraie valeur.
+
+    epss_map/kev_set sont récupérés UNE SEULE FOIS pour tous les manifests
+    (pas par manifest) — la liste catalogue peut compter plusieurs
+    centaines de paquets, et enrich_cve_list() relirait sinon le cache
+    disque à chaque appel.
+
+    Lit/écrit directement PostgreSQL (pas list_manifests(), qui lit les
+    fichiers JSON — une seconde copie utilisée pour backup.sh/rétro-
+    compatibilité, jamais celle que get_package_cve() consulte réellement
+    via load_manifest(), lequel priorise PostgreSQL). save_manifest()
+    réécrit quand même le fichier JSON en plus, gardant les deux copies
+    synchronisées comme pour toute autre écriture de manifest.
+    """
+    from services.cve_enrichment import enrich_cve_list, get_epss_scores, get_kev_set
+
+    with db_conn() as conn:
+        rows = conn.execute(
+            text("SELECT * FROM manifests WHERE cve_results IS NOT NULL")
+        ).mappings().fetchall()
+    manifests = [_row_to_manifest(r) for r in rows]
+    manifests = [m for m in manifests if m.get("cve_results")]
+    if not manifests:
+        return {"updated": 0, "manifests_with_cve": 0, "cve_ids_checked": 0}
+
+    all_cve_ids = {c["id"] for m in manifests for c in m["cve_results"] if c.get("id")}
+
+    try:
+        kev_set  = get_kev_set()
+        epss_map = get_epss_scores(list(all_cve_ids))
+    except Exception as exc:
+        logger.warning("[reenrich] Récupération EPSS/KEV échouée : %s", exc)
+        kev_set  = set()
+        epss_map = {}
+
+    updated = 0
+    for m in manifests:
+        enrich_cve_list(m["cve_results"], epss_map=epss_map, kev_set=kev_set)
+        save_manifest(m)
+        updated += 1
+
+    invalidate_manifest_cache()
+    return {"updated": updated, "manifests_with_cve": len(manifests), "cve_ids_checked": len(all_cve_ids)}
