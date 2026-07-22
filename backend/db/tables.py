@@ -105,6 +105,7 @@ manifests = Table(
     Column("dependencies",       JSONB,   server_default="'[]'::jsonb"),
     Column("validation_steps",   JSONB,   server_default="'[]'::jsonb"),
     Column("cve_results",        JSONB,   server_default="'[]'::jsonb"),
+    Column("last_rematch_at",    Text),
     Column("updated_at",         Text),
     PrimaryKeyConstraint("name", "version", "arch", name="pk_manifests"),
     Index("idx_manifest_name", "name"),

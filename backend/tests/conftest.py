@@ -168,6 +168,7 @@ def db_test_engine():
                 dependencies      TEXT DEFAULT '[]',
                 validation_steps  TEXT DEFAULT '[]',
                 cve_results       TEXT DEFAULT '[]',
+                last_rematch_at   TEXT,
                 updated_at        TEXT,
                 PRIMARY KEY (name, version, arch)
             )

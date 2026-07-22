@@ -300,6 +300,17 @@ DEFAULT_SETTINGS: dict = {
         "minute":   0,
         "timezone": "UTC",   # ex: "Europe/Paris", "America/New_York"
     },
+    # Re-matching CVE rétroactif via SBOM stocké (Grype seul, APT/RPM/APK) —
+    # voir services/cve_rematch.py. Activé par défaut. Programmé après "sync"
+    # (03h00, rafraîchit la base Grype) — base garantie fraîche au moment du
+    # re-matching.
+    "cve_rematch": {
+        "enabled":               True,
+        "hour":                  3,
+        "minute":                45,
+        "max_artifacts_per_run": 50,
+        "max_runtime_minutes":   30,
+    },
     "mirror": {
         "enabled":              False,
         "hour":                 4,

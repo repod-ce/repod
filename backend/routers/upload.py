@@ -19,24 +19,39 @@ import subprocess
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException, Request, Response
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Request,
+    Response,
+    UploadFile,
+)
 from fastapi.responses import StreamingResponse
 
 from auth.dependencies import get_uploader_user
 from limiter import limiter
-from services.rate_limits import make_role_limit
-from services.format_router import (
-    REPO_FORMAT, is_apt, is_rpm, is_apk,
-    ACCEPTED_EXTENSIONS, FORMAT_LABEL, REPO_TOOL_LABEL, DEFAULT_DISTRIBUTION,
-)
-from services.distributions import VALID_CODENAMES
-from services.validator import run_validation_pipeline
-from services.manifest import generate_manifest, save_manifest
-from services.indexer import add_to_index
 from services.audit import log as audit_log
-from services.notifications import notify
+from services.component_sbom import save_component_sbom
 from services.cve_utils import compute_cve_summary
-from services.manifest import compute_sha256
+from services.distributions import VALID_CODENAMES
+from services.format_router import (
+    ACCEPTED_EXTENSIONS,
+    DEFAULT_DISTRIBUTION,
+    FORMAT_LABEL,
+    REPO_FORMAT,
+    REPO_TOOL_LABEL,
+    is_apk,
+    is_apt,
+    is_rpm,
+)
+from services.indexer import add_to_index
+from services.manifest import compute_sha256, generate_manifest, save_manifest
+from services.notifications import notify
+from services.rate_limits import make_role_limit
+from services.validator import run_validation_pipeline
 
 router = APIRouter(prefix="/upload", tags=["Upload"])
 
@@ -413,6 +428,7 @@ async def upload_package(
     )
     manifest["status"] = manifest_status
     save_manifest(manifest)
+    save_component_sbom(manifest["name"], manifest["version"], manifest["arch"], validation.sbom)
 
     # 5. Mise à jour de l'index
     add_to_index(manifest)
@@ -617,6 +633,7 @@ async def _upload_stream_generator(
         )
         manifest["status"] = manifest_status
         save_manifest(manifest)
+        save_component_sbom(manifest["name"], manifest["version"], manifest["arch"], validation.sbom)
         yield step("manifest", "Génération du manifest", "done",
                    f"{manifest['name']} {manifest['version']} · {manifest['arch']}")
 

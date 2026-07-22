@@ -317,6 +317,9 @@ def get_package_cve(
         # distinguer un scan concluant (même sans CVE trouvée) d'un scan
         # jamais exécuté ou inexploitable.
         "has_structured_data": has_conclusive_cve_scan(manifest),
+        # Absent (None) sur un paquet jamais re-matché (créé avant cette
+        # fonctionnalité) — voir services/cve_rematch.py.
+        "last_rematch_at": manifest.get("last_rematch_at"),
     }
 
 

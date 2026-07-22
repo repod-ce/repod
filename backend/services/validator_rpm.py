@@ -19,11 +19,14 @@ logger = logging.getLogger("validator_rpm")
 # parse_rpm_fields, parse_rpm_requires et compute_sha256 sont définis dans manifest.py
 # (commun APT + RPM) pour éviter la duplication.
 from services.manifest import (
+    compute_sha256,
     parse_rpm_fields,
     parse_rpm_requires,
-    parse_rpm_dependencies as parse_dependencies,
-    compute_sha256,
 )
+from services.manifest import (
+    parse_rpm_dependencies as parse_dependencies,
+)
+from services.validator_apt import _run_grype_and_capture_sbom
 
 POOL_DIR = Path(os.getenv("POOL_DIR", "/repos/pool"))
 
@@ -59,6 +62,7 @@ class ValidationResult:
         self.deps: list[dict] = []
         self.cve_results: list[dict] = []
         self.cve_status: str = "approved"
+        self.sbom: dict | None = None  # SBOM CycloneDX capturé lors du scan Grype (voir services/component_sbom.py)
 
     def add_step(self, name: str, passed: bool, message: str, detail: str = "", warning: bool = False):
         entry = {"name": name, "passed": passed, "message": message, "detail": detail}
@@ -277,10 +281,11 @@ def validate_cve_grype(
         cmd += ["--distro", grype_distro]
 
     try:
-        r = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=300,
+        r, sbom = _run_grype_and_capture_sbom(
+            cmd,
             env={**os.environ, "GRYPE_DB_CACHE_DIR": grype_db_dir, "GRYPE_DB_AUTO_UPDATE": "false"},
         )
+        result.sbom = sbom
     except subprocess.TimeoutExpired:
         result.add_step("cve", True, "Grype — timeout (> 5 min), scan CVE ignoré")
         return

@@ -31,10 +31,11 @@ APK_REPO_BASE = Path(os.getenv("APK_REPO_BASE", "/repos/apk"))
 
 # Importation du résultat commun + helpers antivirus depuis validator_apt
 from services.validator_apt import (
+    CLAMD_SOCKET,  # noqa: F401 (re-export pour les tests)
     ValidationResult,
-    validate_clamav,
-    CLAMD_SOCKET,              # noqa: F401 (re-export pour les tests)
     _extract_cvss,
+    _run_grype_and_capture_sbom,
+    validate_clamav,
 )
 
 # Correspondance codename APK → chaîne distro Grype
@@ -217,7 +218,8 @@ def validate_gpg(apk_path: str, result: ValidationResult):
     Toujours marqué comme réussite (non-bloquant) car les paquets privés
     ne sont pas forcément signés par une clé Alpine officielle.
     """
-    import io, tarfile
+    import io
+    import tarfile
 
     try:
         with open(apk_path, "rb") as f:
@@ -281,12 +283,11 @@ def validate_cve_grype(
         cmd += ["--distro", grype_distro]
 
     try:
-        r = subprocess.run(
+        r, sbom = _run_grype_and_capture_sbom(
             cmd,
-            capture_output=True, text=True,
-            timeout=300,
             env={**os.environ, "GRYPE_DB_CACHE_DIR": grype_db_dir, "GRYPE_DB_AUTO_UPDATE": "false"},
         )
+        result.sbom = sbom
     except subprocess.TimeoutExpired:
         result.add_step("cve", True, "Grype — timeout (> 5 min), scan CVE ignoré")
         return
@@ -431,7 +432,7 @@ def validate_dependencies(apk_path: str, result: ValidationResult) -> list[dict]
     Les dépendances Alpine utilisent le champ `depend =` du .PKGINFO.
     Syntaxe: "name", "name>version", "name=version", "so:libfoo.so.1"
     """
-    from services.distributions_apk import parse_apk_metadata, APK_REPO_BASE
+    from services.distributions_apk import APK_REPO_BASE, parse_apk_metadata
 
     try:
         meta = parse_apk_metadata(Path(apk_path))

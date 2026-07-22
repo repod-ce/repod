@@ -5,15 +5,15 @@
 Pipeline de validation d'artefacts.
 Vérifie l'intégrité, les dépendances et le format avant d'accepter un artefact.
 """
+import hashlib
 import json
 import logging
 import os
 import subprocess
-import hashlib
 from pathlib import Path
 
 logger = logging.getLogger("validator")
-from services.manifest import parse_deb_fields, parse_dependencies, compute_sha256
+from services.manifest import compute_sha256, parse_deb_fields, parse_dependencies
 
 POOL_DIR = Path(os.getenv("POOL_DIR", "/repos/pool"))
 
@@ -47,6 +47,7 @@ class ValidationResult:
         self.passed = True
         self.deps: list[dict] = []        # dépendances avec available_internally renseigné
         self.cve_results: list[dict] = []  # liste complète et structurée des CVE (Grype)
+        self.sbom: dict | None = None      # SBOM CycloneDX capturé lors du scan Grype (voir services/component_sbom.py)
         # Statut issu de la politique CVE :
         #   "approved"       → aucun CVE bloquant/en révision
         #   "pending_review" → des CVE déclenchent une révision RSSI
@@ -287,6 +288,75 @@ def _extract_description(match: dict) -> str:
     return ""
 
 
+def _run_grype_and_capture_sbom(cmd: list[str], env: dict, timeout: int = 300):
+    """
+    Exécute la commande grype fournie (déjà construite avec -o json) en lui
+    ajoutant la capture du SBOM CycloneDX dans le même appel — un seul
+    process, aucune ré-extraction du fichier scanné (voir
+    services/component_sbom.py pour ce que devient ce SBOM ensuite).
+    Retourne (CompletedProcess, sbom_dict_ou_None). Best-effort : un échec
+    de capture/parsing du SBOM ne fait jamais échouer le scan CVE lui-même.
+    """
+    import tempfile
+
+    fd, tmp_path = tempfile.mkstemp(suffix=".cdx.json", prefix="grype-sbom-")
+    os.close(fd)
+    try:
+        r = subprocess.run(
+            [*cmd, "-o", f"cyclonedx-json={tmp_path}"],
+            capture_output=True, text=True, timeout=timeout, env=env,
+        )
+        sbom = None
+        try:
+            content = Path(tmp_path).read_text(encoding="utf-8")
+            if content.strip():
+                sbom = json.loads(content)
+        except (OSError, json.JSONDecodeError) as exc:
+            logger.debug("[validator] Capture SBOM ignorée : %s", exc)
+        return r, sbom
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+
+
+def parse_grype_matches(data: dict) -> list[dict]:
+    """
+    Convertit la sortie JSON de `grype ... -o json` en la même structure de
+    cve_list que produit validate_cve_grype() — extrait ici pour être
+    réutilisée par services/cve_rematch.py (re-matching via SBOM stocké)
+    sans dupliquer une 4e fois cette extraction. N'enrichit PAS EPSS/KEV —
+    à faire séparément par l'appelant via enrich_cve_list().
+    """
+    _order = ["Critical", "High", "Medium", "Low", "Negligible", "Unknown"]
+    cve_list: list[dict] = []
+    for match in data.get("matches", []):
+        vuln = match.get("vulnerability", {})
+        artifact = match.get("artifact", {})
+        sev = vuln.get("severity", "Unknown")
+        if sev not in _order:
+            sev = "Unknown"
+        fix_info = vuln.get("fix", {})
+        cve_list.append({
+            "id":              vuln.get("id", ""),
+            "severity":        sev,
+            "cvss":            _extract_cvss(vuln),
+            "description":     _extract_description(match),
+            "package_name":    artifact.get("name", ""),
+            "package_version": artifact.get("version", ""),
+            "package_type":    artifact.get("type", ""),
+            "fix_state":       fix_info.get("state", "unknown"),
+            "fix_versions":    fix_info.get("versions", []),
+            "urls":            vuln.get("urls", [])[:3],
+            "epss":         0.0,
+            "epss_percent": 0.0,
+            "epss_label":   "Faible",
+            "in_kev":       False,
+        })
+    return cve_list
+
+
 def validate_cve_grype(
     deb_path: str,
     result: ValidationResult,
@@ -324,12 +394,12 @@ def validate_cve_grype(
         cmd += ["--distro", grype_distro]
 
     try:
-        r = subprocess.run(
+        r, sbom = _run_grype_and_capture_sbom(
             cmd,
-            capture_output=True, text=True,
-            timeout=300,
             env={**os.environ, "GRYPE_DB_CACHE_DIR": grype_db_dir, "GRYPE_DB_AUTO_UPDATE": "false"},
+            timeout=300,
         )
+        result.sbom = sbom
     except subprocess.TimeoutExpired:
         result.add_step("cve", True, "Grype — timeout (> 5 min), scan CVE ignoré")
         return

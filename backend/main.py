@@ -5,49 +5,49 @@ import logging
 import os
 from contextlib import asynccontextmanager
 
+from apscheduler.events import EVENT_JOB_ERROR, JobExecutionEvent
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
-from apscheduler.events import EVENT_JOB_ERROR, JobExecutionEvent
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
 
-from services.logging_config import setup_logging
-from middleware.request_id import RequestIdMiddleware
-from middleware.metrics_middleware import MetricsMiddleware
-from middleware.security_headers import SecurityHeadersMiddleware
-
-from auth.router import router as auth_router
-from routers.artifacts import router as artifacts_router
-from routers.downloads_router import router as downloads_router
-from routers.dashboard_router import router as dashboard_router
-from routers.distributions_router import router as distributions_router
-from routers.import_router import router as import_router
-from routers.packages import router as packages_router
-from routers.security_router import router as security_router
-from routers.settings_router import router as settings_router, export_public_key as _export_gpg_pubkey
-from routers.upload import router as upload_router
-from routers.health_router import router as health_router
-from routers.metrics_router import router as metrics_router
-from routers.webhook_router import router as webhook_router
-from routers.license_router import router as license_router
-from routers.setup_router import router as setup_router
-from routers.logs_router import router as logs_router
-from routers.groups_router import router as groups_router
-from routers.roles_router import router as roles_router
-from routers.templates_router import router as templates_router
 from auth.roles import seed_builtin_roles
-from services import scheduler_state
-from services import leader_election
-from services.security_sync import run_security_sync
-from services.sla_alerts import run_sla_check
-from services.retention import run_retention
+from auth.router import router as auth_router
+from middleware.metrics_middleware import MetricsMiddleware
+from middleware.request_id import RequestIdMiddleware
+from middleware.security_headers import SecurityHeadersMiddleware
+from routers.artifacts import router as artifacts_router
+from routers.dashboard_router import router as dashboard_router
+from routers.distributions_router import auto_init_distributions
+from routers.distributions_router import router as distributions_router
+from routers.downloads_router import router as downloads_router
+from routers.groups_router import router as groups_router
+from routers.health_router import router as health_router
+from routers.import_router import router as import_router
+from routers.license_router import router as license_router
+from routers.logs_router import router as logs_router
+from routers.metrics_router import router as metrics_router
+from routers.packages import router as packages_router
+from routers.roles_router import router as roles_router
+from routers.security_router import router as security_router
+from routers.settings_router import export_public_key as _export_gpg_pubkey
+from routers.settings_router import router as settings_router
+from routers.setup_router import router as setup_router
+from routers.templates_router import router as templates_router
+from routers.upload import router as upload_router
+from routers.webhook_router import router as webhook_router
+from services import leader_election, scheduler_state
+from services.cve_rematch import run_cve_rematch_daily
+from services.logging_config import setup_logging
 from services.mirror import run_scheduled_mirror
 from services.notifications import notify
+from services.retention import run_retention
+from services.security_sync import run_security_sync
 from services.settings import get_settings
-from routers.distributions_router import auto_init_distributions
+from services.sla_alerts import run_sla_check
 
 load_dotenv()
 
@@ -314,6 +314,29 @@ async def lifespan(app: FastAPI):
             replace_existing=True,
             misfire_grace_time=3600,  # tolère 1h de décalage (container redémarré)
         )
+        # ── Re-matching CVE rétroactif via SBOM stocké (Grype seul, APT/RPM/APK) ──
+        # Job séparé de security_sync_daily : un balayage complet du catalogue
+        # peut prendre plusieurs dizaines de minutes à grande échelle et
+        # bloquerait sinon le reste de la sync (KEV, EPSS, sources).
+        # Programmé juste après security_sync_daily (qui vient de rafraîchir la
+        # base Grype) pour un séquencement naturel, base fraîche garantie.
+        # Activé par défaut — voir services/cve_rematch.py.
+        cve_rematch_cfg = settings.get("cve_rematch", {})
+        cve_rematch_enabled = cve_rematch_cfg.get("enabled", True)
+        sched.add_job(
+            run_cve_rematch_daily,
+            trigger=CronTrigger(
+                hour=int(cve_rematch_cfg.get("hour", 3)),
+                minute=int(cve_rematch_cfg.get("minute", 45)),
+            ),
+            id="cve_rematch_daily",
+            name="Re-matching CVE rétroactif (Grype, via SBOM stocké)",
+            replace_existing=True,
+            misfire_grace_time=3600,
+        )
+        if not cve_rematch_enabled:
+            sched.pause_job("cve_rematch_daily")
+
         # ── Vérification quotidienne des SLA CVE (08h00) ──────────────────────────
         sched.add_job(
             run_sla_check,

@@ -538,6 +538,15 @@ function InspectPanel({ pkg, onClose }) {
                   </div>
                 )}
 
+                {/* Absent sur un paquet jamais re-matché (créé avant cette
+                    fonctionnalité) — voir services/cve_rematch.py. */}
+                {cve?.last_rematch_at && (
+                  <p className="text-xs text-gray-400 mb-3"
+                     title="Re-matching CVE périodique via SBOM stocké, sans relancer de scan complet">
+                    Dernier re-scan CVE : {new Date(cve.last_rematch_at).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                  </p>
+                )}
+
                 {cveList.length === 0 ? (
                   <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-8 text-center">
                     <p className="text-green-700 font-semibold text-sm">Aucune CVE détectée</p>

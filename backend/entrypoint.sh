@@ -51,6 +51,11 @@ fi
 
 echo "[entrypoint] Correction des permissions sur les volumes..."
 
+# /repos/sboms n'existe pas forcément au premier démarrage (bind-mount créé
+# root:root par Docker) — mkdir -p explicite avant la boucle ci-dessous, qui
+# ne fait que chown les répertoires déjà présents.
+mkdir -p /repos/sboms 2>/dev/null || true
+
 for DIR in \
     /repos/apk \
     /repos/audit \
@@ -65,6 +70,7 @@ for DIR in \
     /repos/manifests \
     /repos/package-index \
     /repos/pool \
+    /repos/sboms \
     /repos/security \
     /repos/staging; do
     if [ -d "$DIR" ]; then

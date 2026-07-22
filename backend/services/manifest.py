@@ -108,6 +108,7 @@ def _manifest_to_row(m: dict) -> dict:
         "dependencies":      json.dumps(m.get("dependencies", []), ensure_ascii=False),
         "validation_steps":  json.dumps(m.get("validation_steps", []), ensure_ascii=False),
         "cve_results":       json.dumps(m.get("cve_results", []), ensure_ascii=False),
+        "last_rematch_at":   m.get("last_rematch_at"),
         "updated_at":        datetime.now(timezone.utc).isoformat(),
     }
 
@@ -148,6 +149,7 @@ def _row_to_manifest(row) -> dict:
         "dependencies":     _json_field(d.get("dependencies")),
         "validation_steps": _json_field(d.get("validation_steps")),
         "cve_results":      _json_field(d.get("cve_results")),
+        "last_rematch_at":  d.get("last_rematch_at"),
     }
 
 

@@ -236,6 +236,7 @@ def _import_one_locked(pkg_row: dict, distribution: str, user: str, group: str |
     import tempfile
 
     from services.audit import log as audit_log
+    from services.component_sbom import save_component_sbom
     from services.distributions_apk import add_package as apk_add_package
     from services.indexer import add_to_index
     from services.manifest import generate_manifest, save_manifest
@@ -291,6 +292,7 @@ def _import_one_locked(pkg_row: dict, distribution: str, user: str, group: str |
         )
         manifest["status"] = "pending_review" if cve_status == "pending_review" else "validated"
         save_manifest(manifest)
+        save_component_sbom(manifest["name"], manifest["version"], manifest["arch"], validation.sbom)
         add_to_index(manifest)
 
         if cve_status == "pending_review":
