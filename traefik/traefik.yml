@@ -1,24 +1,25 @@
 # =============================================================================
-# traefik/traefik.yml — Configuration statique Traefik pour Repod
+# traefik/traefik.yml - Configuration statique Traefik pour Repod
 #
 # Chargée par le service `traefik` (docker-compose.traefik.yml).
 #
 # Choix délibéré : provider FILE uniquement, pas de provider Docker (labels).
 # Le provider Docker nécessite de monter /var/run/docker.sock dans le
-# conteneur Traefik — exactement ce que ce projet évite partout ailleurs
+# conteneur Traefik - exactement ce que ce projet évite partout ailleurs
 # (voir CLAUDE.md, sections HA et registre OCI : "/var/run/docker.sock N'EST
 # PAS monté, le backend n'orchestre jamais via l'API Docker"). Un conteneur
 # avec accès au socket peut contrôler TOUS les conteneurs de l'hôte, y
-# compris les données d'autres tenants en mode SaaS — un risque
+# compris les données d'autres tenants en mode SaaS - un risque
 # disproportionné juste pour éviter d'écrire deux routes dans dynamic.yml.
 # La contrepartie : pas de découverte automatique de nouveaux services par
-# label — dynamic.yml se met à jour à la main (comme nginx/tls-proxy.conf
+# label - dynamic.yml se met à jour à la main (comme nginx/tls-proxy.conf
 # aujourd'hui), mais `watch: true` recharge sans redémarrer le conteneur.
 #
 # Architecture (parité avec nginx/tls-proxy.conf) :
 #   :80          → redirection vers :443 (toutes routes)
 #   :443         → UI de gestion (frontend-ui:80) + API (/api/, proxée par le frontend)
-#   :8443        → API directe (backend-api:8000) — CI/CD, Prometheus
+#                  + dépôts : /repos/ et /apk/ (apt-repo), /rpm/ (rpm-repo)
+#   :8443        → API directe (backend-api:8000) - CI/CD, Prometheus
 # =============================================================================
 
 entryPoints:
@@ -41,7 +42,7 @@ providers:
 
 # Dashboard désactivé par défaut (surface d'attaque supplémentaire inutile
 # en production). Pour du debug local ponctuel : passer à `true`, ajouter
-# `--api.insecure=true` est déconseillé — préférer exposer le dashboard
+# `--api.insecure=true` est déconseillé - préférer exposer le dashboard
 # via une route dynamic.yml protégée par IP/auth si besoin durablement.
 api:
   dashboard: false
@@ -50,7 +51,7 @@ log:
   level: INFO
 
 # =============================================================================
-# Let's Encrypt (optionnel) — Traefik gère l'ACME nativement, contrairement
+# Let's Encrypt (optionnel) - Traefik gère l'ACME nativement, contrairement
 # à la combinaison nginx + certbot utilisée par docker-compose.letsencrypt.yml
 # (pas de conteneur certbot séparé, pas de cron de renouvellement à gérer :
 # Traefik renouvelle seul en arrière-plan).

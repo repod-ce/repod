@@ -310,26 +310,131 @@ docker compose up -d
 
 ---
 
-## TLS Deployment / Deploiement TLS
+## TLS Deployment / Déploiement TLS
 
-### Self-signed certificate / Certificat auto-signe
+**EN** | Every certificate source goes through one entry point,
+`scripts/setup-tls.sh`. Whatever the origin, it feeds the same canonical pair -
+`repos/certs/tls/cert.pem` (leaf first, then intermediates) and
+`repos/certs/tls/key.pem` - which is exactly what nginx and Traefik already
+read. No tracked configuration file ever has to be edited, and the script
+reloads the running proxy itself.
+
+**FR** | Toutes les sources de certificat passent par un point d'entrée unique,
+`scripts/setup-tls.sh`. Quelle que soit l'origine, il alimente le même couple
+canonique - `repos/certs/tls/cert.pem` (feuille puis intermédiaires) et
+`repos/certs/tls/key.pem` - celui-là même que lisent déjà nginx et Traefik.
+Aucun fichier de configuration suivi par git n'est à modifier, et le script
+recharge lui-même le proxy en cours d'exécution.
+
+### Self-signed certificate / Certificat auto-signé
 
 ```bash
-bash scripts/gen-selfsigned-certs.sh
+bash scripts/setup-tls.sh self-signed repod.example.com
 docker compose -f docker-compose.yaml -f docker-compose.tls.yml up -d
 ```
+
+Several names and IPs on one certificate / Plusieurs noms et IP sur un même
+certificat :
+
+```bash
+bash scripts/setup-tls.sh self-signed \
+     --san dns:repod.example.com --san dns:repod --san ip:192.0.2.10
+```
+
+### Internal CA / Autorité interne (easy-rsa, AD CS)
+
+```bash
+# 1. Requête multi-SAN - la clé reste dans pending/, le certificat en service
+#    n'est pas touché pendant l'attente de la signature
+bash scripts/setup-tls.sh csr \
+     --san dns:repod.example.com --san dns:repod --san ip:192.0.2.10
+
+# 2. Faire signer repos/certs/tls/pending/request.csr par l'autorité
+#    AD CS     : certsrv, « base-64-encoded CMC or PKCS #10 file »
+#    easy-rsa  : easyrsa import-req … repod && easyrsa sign-req server repod
+
+# 3. Installer le retour - la clé en attente est reprise automatiquement
+bash scripts/setup-tls.sh import --cert repod.crt --chain ca-chain.pem
+```
+
+Depuis un export PFX (AD CS) / From a PFX export :
+
+```bash
+bash scripts/setup-tls.sh import --pkcs12 repod.pfx --password-file pass.txt
+```
+
+**EN** | The script refuses to install a certificate that does not match the
+key, or a key protected by a passphrase (nginx starts without a terminal and
+could never be prompted for one), and warns when the intermediate CA is missing
+from the bundle - the usual failure of a two-tier AD CS PKI. On AD CS, the
+template must be configured to honour the SANs supplied in the request,
+otherwise the CA silently replaces them with directory values.
+
+**FR** | Le script refuse un certificat qui ne correspond pas à la clé, ou une
+clé protégée par une phrase de passe (nginx démarre sans terminal, la phrase ne
+pourrait jamais être saisie), et avertit si l'autorité intermédiaire manque -
+l'échec habituel d'une PKI AD CS à deux niveaux. Sur AD CS, le modèle doit être
+configuré pour honorer les SAN fournis dans la requête, sinon l'autorité les
+remplace silencieusement par ceux de l'annuaire.
 
 ### Let's Encrypt (public domain required / domaine public requis)
 
 ```bash
-export REPOD_DOMAIN=repod.example.com
-export CERTBOT_EMAIL=admin@example.com
-
-docker compose -f docker-compose.yaml -f docker-compose.tls.yml \
-               -f docker-compose.letsencrypt.yml up -d
-docker compose -f docker-compose.yaml -f docker-compose.tls.yml \
-               -f docker-compose.letsencrypt.yml run --rm certbot certonly
+bash scripts/setup-tls.sh letsencrypt \
+     --domain repod.example.com --email admin@example.com
 ```
+
+Une seule commande : elle règle l'amorçage (nginx refuse de démarrer sans
+certificat, et sans nginx le challenge HTTP-01 n'est pas servi sur `:80`),
+demande le certificat, l'installe et recharge le proxy.
+
+Renouvellement, à planifier / Renewal, to be scheduled :
+
+```bash
+0 3 * * * cd /opt/repod && bash scripts/setup-tls.sh renew >> /var/log/repod-tls.log 2>&1
+```
+
+Sans cron sur l'hôte, décommenter le service `certbot-renew` et la ligne
+`command:` du proxy dans `docker-compose.letsencrypt.yml` : la pile se
+renouvelle alors seule, sans accès au socket Docker.
+
+### Certificate status / État du certificat
+
+```bash
+bash scripts/setup-tls.sh status
+```
+
+Sujet, SAN, dates, correspondance de la clé, requête éventuellement en attente
+et proxy actif.
+
+### Package repositories over HTTPS / Dépôts de paquets en HTTPS
+
+**EN** | With either TLS overlay loaded, the package repositories are served by
+the proxy under the same certificate as the UI:
+
+**FR** | Avec l'un ou l'autre des overlays TLS, les dépôts de paquets sont
+servis par le proxy sous le même certificat que l'UI :
+
+| Format | HTTPS (`:443`) | Direct (unchanged / inchangé) |
+|---|---|---|
+| APT | `https://<host>/repos/dists/<codename>` | `http://<host>:${APT_TLS_PORT}/repos/…` |
+| RPM | `https://<host>/rpm/<distro>/<arch>/` | `http://<host>:${RPM_REPO_PORT}/<distro>/…` |
+| APK | `https://<host>/apk/<distro>/main` | `http://<host>:${APT_TLS_PORT}/apk/…` |
+
+**EN** | The direct ports stay published, so existing `sources.list` and
+`.repo` files keep working - HTTPS is an additional path, not a replacement.
+Clients must trust the CA that issued the certificate (already the case on
+domain-joined machines with an AD CS PKI); with a self-signed certificate, add
+it with `update-ca-certificates`. The Client Setup page generates the right
+form automatically depending on how you reached the UI.
+
+**FR** | Les ports directs restent publiés : les `sources.list` et `.repo`
+déjà déployés continuent de fonctionner, le HTTPS est un accès supplémentaire,
+pas un remplacement. Les clients doivent faire confiance à l'autorité émettrice
+(déjà le cas sur les machines du domaine avec une PKI AD CS) ; avec un
+certificat auto-signé, l'ajouter via `update-ca-certificates`. La page
+Configuration client génère la bonne forme selon la façon dont l'UI a été
+jointe.
 
 ### Alternative: Traefik / Alternative : Traefik
 
@@ -339,7 +444,7 @@ same ports, same self-signed-by-default behavior. **Never load both overlays
 together** — they'd fight over ports 80/443/8443.
 
 ```bash
-bash scripts/gen-selfsigned-certs.sh
+bash scripts/setup-tls.sh self-signed repod.example.com
 docker compose -f docker-compose.yaml -f docker-compose.traefik.yml up -d
 ```
 
@@ -359,6 +464,25 @@ instead of adding a label. If you already run your own Traefik instance and
 want Repod to sit behind it instead, skip this overlay entirely — start
 Repod with the base `docker-compose.yaml` only and point your own Traefik's
 dynamic config at `http://<repod-host>:3003`.
+
+Certificates come from the same `scripts/setup-tls.sh`, except for Let's
+Encrypt: with this overlay, use Traefik's native ACME (the commented
+`certResolver` block in `traefik/traefik.yml`) rather than `setup-tls.sh
+letsencrypt`, which drives the Certbot container of the Nginx path. Package
+repositories are routed the same way as with Nginx, with one known limitation:
+browsing an RPM directory without its trailing slash yields a redirect that
+drops the `/rpm` prefix, Traefik having no response-side equivalent to
+`proxy_redirect`. DNF and Zypper always request full URLs and are unaffected.
+
+Les certificats viennent du même `scripts/setup-tls.sh`, sauf pour Let's
+Encrypt : avec cet overlay, utiliser l'ACME natif de Traefik (bloc
+`certResolver` commenté dans `traefik/traefik.yml`) plutôt que `setup-tls.sh
+letsencrypt`, qui pilote le conteneur Certbot du chemin Nginx. Les dépôts de
+paquets sont routés comme avec Nginx, avec une limite connue : la navigation
+dans un répertoire RPM sans barre finale renvoie une redirection qui perd le
+préfixe `/rpm`, Traefik n'ayant pas d'équivalent de `proxy_redirect` côté
+réponse. DNF et Zypper visent toujours des URL complètes et ne sont pas
+concernés.
 
 ---
 

@@ -1,19 +1,19 @@
 # =============================================================================
-# traefik/dynamic.yml — Configuration dynamique Traefik pour Repod
+# traefik/dynamic.yml - Configuration dynamique Traefik pour Repod
 #
-# Routes, services amont, middlewares et certificat TLS — équivalent
+# Routes, services amont, middlewares et certificat TLS - équivalent
 # fonctionnel de nginx/tls-proxy.conf. Rechargé à chaud par Traefik
 # (providers.file.watch=true dans traefik.yml), pas besoin de redémarrer
 # le conteneur après une modification.
 #
 # `frontend-ui`/`backend-api` sont résolus via le DNS interne Docker, sur
-# le réseau `repod_network` (le conteneur traefik doit y être attaché —
+# le réseau `repod_network` (le conteneur traefik doit y être attaché -
 # voir docker-compose.traefik.yml).
 # =============================================================================
 
 http:
   routers:
-    # ── UI de gestion + API (proxée par le frontend) — :443 ──────────────────
+    # ── UI de gestion + API (proxée par le frontend) - :443 ──────────────────
     repod-ui:
       rule: "PathPrefix(`/`)"
       entryPoints: ["websecure"]
@@ -21,13 +21,39 @@ http:
       tls: {}
       middlewares: ["repod-security-headers"]
 
-    # ── API directe — :8443 (CI/CD, Prometheus) ──────────────────────────────
+    # ── API directe - :8443 (CI/CD, Prometheus) ──────────────────────────────
     repod-api:
       rule: "PathPrefix(`/`)"
       entryPoints: ["backendapi"]
       service: repod-api
       tls: {}
       middlewares: ["repod-security-headers-api"]
+
+    # ── Dépôts de paquets - :443, même certificat que l'UI ───────────────────
+    # Traefik priorise par longueur de règle : ces routeurs passent devant le
+    # PathPrefix(`/`) de repod-ui sans priorité explicite. Les ports directs
+    # (APT_TLS_PORT, RPM_REPO_PORT) restent publiés, ce chemin est un accès
+    # supplémentaire et ne casse aucun sources.list existant.
+    repod-apt:
+      rule: "PathPrefix(`/repos`) || PathPrefix(`/apk`)"
+      entryPoints: ["websecure"]
+      service: repod-apt
+      tls: {}
+      middlewares: ["repod-security-headers"]
+
+    # rpm-repo sert ses arborescences à sa racine, d'où le retrait du préfixe.
+    # Limite connue : l'autoindex de rpm-repo redirige un répertoire demandé
+    # sans barre finale vers une URL sans le préfixe /rpm. Les clients DNF et
+    # Zypper visent toujours des URL complètes, seule la navigation manuelle
+    # est concernée. La contrepartie nginx réécrit ces redirections
+    # (proxy_redirect dans nginx/tls-proxy.conf), Traefik n'a pas d'équivalent
+    # côté réponse.
+    repod-rpm:
+      rule: "PathPrefix(`/rpm`)"
+      entryPoints: ["websecure"]
+      service: repod-rpm
+      tls: {}
+      middlewares: ["repod-strip-rpm", "repod-security-headers"]
 
   services:
     repod-ui:
@@ -38,9 +64,21 @@ http:
       loadBalancer:
         servers:
           - url: "http://backend-api:8000"
+    repod-apt:
+      loadBalancer:
+        servers:
+          - url: "http://apt-repo:80"
+    repod-rpm:
+      loadBalancer:
+        servers:
+          - url: "http://rpm-repo:80"
 
   middlewares:
-    # HSTS 2 ans + en-têtes de sécurité — mêmes valeurs que nginx/tls-proxy.conf
+    repod-strip-rpm:
+      stripPrefix:
+        prefixes: ["/rpm"]
+
+    # HSTS 2 ans + en-têtes de sécurité - mêmes valeurs que nginx/tls-proxy.conf
     repod-security-headers:
       headers:
         stsSeconds: 63072000
@@ -69,5 +107,5 @@ tls:
     default:
       minVersion: VersionTLS12
       # Go 1.22+ (image Traefik officielle) ne propose déjà que des suites
-      # AEAD/PFS pour TLS 1.2+ par défaut — pas de liste de ciphers à
+      # AEAD/PFS pour TLS 1.2+ par défaut - pas de liste de ciphers à
       # maintenir à la main comme dans nginx/tls-proxy.conf.

@@ -27,7 +27,7 @@ api.interceptors.request.use((config) => {
 
 // Redirige vers /login en cas de 401 uniquement si l'utilisateur était authentifié.
 // Si pas de token (ex: mauvais identifiants sur la page de login), on laisse le
-// composant gérer l'erreur lui-même — sinon la page recharge avant l'affichage
+// composant gérer l'erreur lui-même - sinon la page recharge avant l'affichage
 // du message d'erreur.
 api.interceptors.response.use(
   (response) => response,
@@ -200,11 +200,24 @@ export const getBaseUrl    = () => API_URL;
 // (bug réel trouvé en direct : ClientSetupPage.js/SettingsPage.js/
 // PackageList.js dupliquaient chacun ce même repli, silencieusement faux dès
 // qu'aucune variable d'env n'était explicitement positionnée au build).
+// En HTTPS, la page est servie par le proxy TLS, qui sert aussi les dépôts sous
+// le même certificat : /repos et /apk (apt-repo), /rpm (rpm-repo) - voir
+// nginx/tls-proxy.conf et traefik/dynamic.yml. Coller le port du dépôt en clair
+// au protocole de la page produisait un « https://<host>:80 » injoignable.
+// En HTTP, les dépôts sont joints en direct sur leurs ports publiés.
+const proxiesRepos = () => window.location.protocol === "https:";
+
 export const getRepoUrl = () =>
-  import.meta.env.REACT_APP_REPO_URL || `${window.location.protocol}//${window.location.hostname}:80`;
+  import.meta.env.REACT_APP_REPO_URL ||
+  (proxiesRepos()
+    ? window.location.origin
+    : `${window.location.protocol}//${window.location.hostname}:80`);
 
 export const getRpmRepoUrl = () =>
-  import.meta.env.REACT_APP_RPM_REPO_URL || `${window.location.protocol}//${window.location.hostname}:8080`;
+  import.meta.env.REACT_APP_RPM_REPO_URL ||
+  (proxiesRepos()
+    ? `${window.location.origin}/rpm`
+    : `${window.location.protocol}//${window.location.hostname}:8080`);
 
 // L'API est proxifiée par nginx sur le même host:port que le frontend
 // lui-même (voir frontend/nginx.conf, location /api/) — window.location.origin

@@ -1,30 +1,31 @@
 # =============================================================================
-# docker-compose.letsencrypt.yml — Overlay Let's Encrypt pour Repod
+# docker-compose.letsencrypt.yml - Overlay Let's Encrypt pour Repod
 #
 # Prérequis :
 #   1. Un nom de domaine public pointant vers cette machine (ex: repod.example.com)
 #   2. Le port 80 accessible depuis Internet (pour la validation ACME HTTP-01)
 #   3. docker-compose.tls.yml chargé en même temps
 #
-# Usage :
+# Usage - tout passe par scripts/setup-tls.sh, qui règle l'amorçage (nginx
+# refuse de démarrer sans certificat, et sans nginx le challenge HTTP-01 n'est
+# pas servi sur :80), lance l'émission puis installe et recharge :
+#
+#   bash scripts/setup-tls.sh letsencrypt \
+#        --domain repod.example.com --email admin@example.com
+#
+#   # Renouvellement, à planifier (cron, timer systemd) :
+#   bash scripts/setup-tls.sh renew
+#
+# Le certificat émis est recopié vers repos/certs/tls/{cert.pem,key.pem} par le
+# --deploy-hook ci-dessous, c'est-à-dire le chemin canonique que nginx et
+# Traefik lisent déjà. Aucun fichier de configuration suivi par git n'est à
+# modifier, contrairement aux versions précédentes de cet overlay.
+#
+# Émission manuelle, sans le script, si besoin :
 #   export REPOD_DOMAIN=repod.example.com
 #   export CERTBOT_EMAIL=admin@example.com
-#
-#   # Première émission :
 #   docker compose -f docker-compose.yaml -f docker-compose.tls.yml \
-#                  -f docker-compose.letsencrypt.yml up -d
-#   docker compose -f docker-compose.yaml -f docker-compose.tls.yml \
-#                  -f docker-compose.letsencrypt.yml run --rm certbot certonly
-#
-#   # Renouvellement (à planifier via cron ou systemd timer) :
-#   docker compose -f docker-compose.yaml -f docker-compose.tls.yml \
-#                  -f docker-compose.letsencrypt.yml run --rm certbot renew
-#   docker compose restart nginx-proxy
-#
-# Après émission, les certificats sont dans repos/certs/letsencrypt/live/$DOMAIN/.
-# Mettre à jour nginx/tls-proxy.conf pour pointer vers ces certificats :
-#   ssl_certificate     /certs/letsencrypt/live/repod.example.com/fullchain.pem;
-#   ssl_certificate_key /certs/letsencrypt/live/repod.example.com/privkey.pem;
+#                  -f docker-compose.letsencrypt.yml run --rm certbot
 # =============================================================================
 
 services:
@@ -35,6 +36,12 @@ services:
     volumes:
       - ./repos/certs/letsencrypt:/etc/letsencrypt
       - certbot_webroot:/var/www/certbot
+      # Chemin canonique lu par le proxy - cible du --deploy-hook
+      - ./repos/certs/tls:/certs-tls:rw
+    # $$ échappe l'interpolation Compose : $RENEWED_LINEAGE est une variable de
+    # certbot, résolue au moment du hook, pas une variable de l'hôte.
+    # Le hook est enregistré dans le fichier de renouvellement à l'émission,
+    # donc « certbot renew » le rejoue sans avoir à le repasser.
     entrypoint: >
       certbot certonly
         --webroot
@@ -45,14 +52,50 @@ services:
         --domain ${REPOD_DOMAIN:?Variable REPOD_DOMAIN requise}
         --cert-path /etc/letsencrypt/live/${REPOD_DOMAIN}/cert.pem
         --key-path  /etc/letsencrypt/live/${REPOD_DOMAIN}/privkey.pem
+        ${CERTBOT_STAGING:-}
+        --deploy-hook 'install -m 644 $$RENEWED_LINEAGE/fullchain.pem /certs-tls/cert.pem && install -m 600 $$RENEWED_LINEAGE/privkey.pem /certs-tls/key.pem'
     networks:
       - repod_network
 
-  # Surcharge du proxy TLS pour utiliser les certs Let's Encrypt
+  # Surcharge du proxy TLS
   nginx-proxy:
+    # Rechargement périodique - décommenter avec le service certbot-renew en
+    # fin de fichier (voir le bloc « Renouvellement sans cron »).
+    # command: sh -c 'while :; do sleep 6h & wait $${!}; nginx -s reload; done & exec nginx -g "daemon off;"'
     volumes:
+      # Conservé pour les déploiements antérieurs qui ont fait pointer
+      # nginx/tls-proxy.conf directement vers live/$DOMAIN/. Les nouveaux
+      # déploiements n'en ont pas besoin : le deploy-hook alimente /certs.
       - ./repos/certs/letsencrypt:/certs/letsencrypt:ro
       - certbot_webroot:/var/www/certbot:rw
+
+# =============================================================================
+# Renouvellement sans cron sur l'hôte (optionnel)
+#
+# Deux choses à décommenter pour que la pile se renouvelle seule : le service
+# certbot-renew ci-dessous, qui tente un renouvellement toutes les 12 h, et la
+# ligne `command:` du service nginx-proxy plus haut, qui recharge nginx toutes
+# les 6 h pour prendre en compte un certificat fraîchement déposé. Aucun accès
+# au socket Docker n'est nécessaire - un conteneur qui le détient contrôle tous
+# les conteneurs de l'hôte, ce que ce projet refuse partout (voir l'en-tête de
+# traefik/traefik.yml).
+#
+# Le service certbot ci-dessus reste utilisable en one-shot : les deux
+# cohabitent. Le --deploy-hook enregistré à l'émission est rejoué par
+# certbot-renew, il n'a pas à être répété ici.
+#
+#  certbot-renew:
+#    image: certbot/certbot:latest
+#    container_name: repod-certbot-renew
+#    volumes:
+#      - ./repos/certs/letsencrypt:/etc/letsencrypt
+#      - certbot_webroot:/var/www/certbot
+#      - ./repos/certs/tls:/certs-tls:rw
+#    entrypoint: sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done'
+#    restart: unless-stopped
+#    networks:
+#      - repod_network
+# =============================================================================
 
 volumes:
   certbot_webroot:
