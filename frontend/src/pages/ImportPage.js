@@ -239,19 +239,31 @@ const DISTRIBUTIONS = [
   { codename: "jammy",           label: "Jammy 22.04 (LTS)",    format: "deb" },
   { codename: "noble",           label: "Noble 24.04",           format: "deb" },
   { codename: "focal",           label: "Focal 20.04",           format: "deb" },
+  { codename: "resolute",        label: "Resolute 26.04 (LTS)",  format: "deb" },
+  { codename: "trixie",          label: "Trixie 13",             format: "deb" },
   { codename: "bookworm",        label: "Bookworm 12",           format: "deb" },
   // RPM — RHEL family
+  { codename: "almalinux10",     label: "AlmaLinux 10",          format: "rpm" },
   { codename: "almalinux9",      label: "AlmaLinux 9",           format: "rpm" },
   { codename: "almalinux8",      label: "AlmaLinux 8",           format: "rpm" },
+  { codename: "rocky10",         label: "Rocky 10",              format: "rpm" },
   { codename: "rocky9",          label: "Rocky 9",               format: "rpm" },
   { codename: "rocky8",          label: "Rocky 8",               format: "rpm" },
+  { codename: "centos-stream10", label: "CentOS Stream 10",      format: "rpm" },
   { codename: "centos-stream9",  label: "CentOS Stream 9",       format: "rpm" },
+  { codename: "oraclelinux10",   label: "Oracle Linux 10",       format: "rpm" },
   { codename: "oraclelinux9",    label: "Oracle Linux 9",        format: "rpm" },
-  { codename: "fedora",          label: "Fedora",                format: "rpm" },
+  { codename: "fedora44",        label: "Fedora 44",             format: "rpm" },
+  { codename: "fedora43",        label: "Fedora 43",             format: "rpm" },
+  { codename: "fedora",          label: "Fedora 42 (EOL)",       format: "rpm" },
   // RPM — openSUSE
+  { codename: "opensuse-leap-16.0",  label: "openSUSE Leap 16.0",   format: "rpm" },
   { codename: "opensuse-leap-15.6",  label: "openSUSE Leap 15.6",   format: "rpm" },
   { codename: "opensuse-tumbleweed", label: "openSUSE Tumbleweed",  format: "rpm" },
   // APK — Alpine Linux
+  { codename: "alpine3.24",  label: "Alpine 3.24",  format: "apk" },
+  { codename: "alpine3.23",  label: "Alpine 3.23",  format: "apk" },
+  { codename: "alpine3.22",  label: "Alpine 3.22",  format: "apk" },
   { codename: "alpine3.21",  label: "Alpine 3.21",  format: "apk" },
   { codename: "alpine3.20",  label: "Alpine 3.20",  format: "apk" },
   { codename: "alpine3.19",  label: "Alpine 3.19",  format: "apk" },
@@ -263,24 +275,36 @@ function guessDistrib(distro) {
   // APT
   if (distro.startsWith("focal"))    return "focal";
   if (distro.startsWith("noble"))    return "noble";
+  if (distro.startsWith("resolute")) return "resolute";
+  if (distro.startsWith("trixie"))   return "trixie";
   if (distro.startsWith("bookworm")) return "bookworm";
   if (distro.startsWith("jammy"))    return "jammy";
   // RPM
+  if (distro.includes("almalinux10")) return "almalinux10";
   if (distro.includes("almalinux9")) return "almalinux9";
   if (distro.includes("almalinux8")) return "almalinux8";
+  if (distro.includes("rocky10"))    return "rocky10";
   if (distro.includes("rocky9"))     return "rocky9";
   if (distro.includes("rocky8"))     return "rocky8";
+  if (distro.includes("centos") && distro.includes("10")) return "centos-stream10";
   if (distro.includes("centos"))     return "centos-stream9";
+  if (distro.includes("oracle") && distro.includes("10")) return "oraclelinux10";
   if (distro.includes("oracle") && distro.includes("9")) return "oraclelinux9";
+  if (distro.includes("fedora44"))   return "fedora44";
+  if (distro.includes("fedora43"))   return "fedora43";
   if (distro.includes("fedora"))     return "fedora";
   if (distro.includes("tumbleweed")) return "opensuse-tumbleweed";
+  if (distro.includes("leap") && distro.includes("16")) return "opensuse-leap-16.0";
   if (distro.includes("leap"))       return "opensuse-leap-15.6";
   // APK — Alpine
+  if (distro.includes("alpine3.24")) return "alpine3.24";
+  if (distro.includes("alpine3.23")) return "alpine3.23";
+  if (distro.includes("alpine3.22")) return "alpine3.22";
   if (distro.includes("alpine3.21")) return "alpine3.21";
   if (distro.includes("alpine3.20")) return "alpine3.20";
   if (distro.includes("alpine3.19")) return "alpine3.19";
   if (distro.includes("alpine3.18")) return "alpine3.18";
-  if (distro.includes("alpine"))     return "alpine3.21";
+  if (distro.includes("alpine"))     return "alpine3.24";
   return "jammy";
 }
 

@@ -1,7 +1,8 @@
 """
 Gestion des distributions RPM (createrepo_c).
-Distributions : AlmaLinux 8, Rocky Linux 8, CentOS Stream 9, Oracle Linux 8,
-                Fedora, openSUSE Leap 15.5/15.6/Leap/Tumbleweed.
+Distributions : AlmaLinux 8/9/10, Rocky Linux 8/9/10, CentOS Stream 9/10,
+                Oracle Linux 8/9/10, Fedora 42/43/44,
+                openSUSE Leap 15.6/16.0/Tumbleweed.
 createrepo_c est exécuté directement dans le container backend.
 """
 import os
@@ -38,6 +39,17 @@ RPM_DISTRIBUTIONS = [
         "grype_distro": "almalinux:9",
     },
     {
+        "codename": "almalinux10",
+        "name": "AlmaLinux 10",
+        "full_name": "AlmaLinux 10 — Purple Lion",
+        "os": "almalinux",
+        "version": "10",
+        "badge": "RHEL-compat",
+        "color": "blue",
+        "package_manager": "dnf",
+        "grype_distro": "almalinux:10",
+    },
+    {
         "codename": "rocky8",
         "name": "Rocky Linux 8",
         "full_name": "Rocky Linux 8 — Green Obsidian",
@@ -60,6 +72,17 @@ RPM_DISTRIBUTIONS = [
         "grype_distro": "rockylinux:9",
     },
     {
+        "codename": "rocky10",
+        "name": "Rocky Linux 10",
+        "full_name": "Rocky Linux 10 — Red Quartz",
+        "os": "rocky",
+        "version": "10",
+        "badge": "RHEL-compat",
+        "color": "green",
+        "package_manager": "dnf",
+        "grype_distro": "rockylinux:10",
+    },
+    {
         "codename": "centos-stream9",
         "name": "CentOS Stream 9",
         "full_name": "CentOS Stream 9",
@@ -69,6 +92,17 @@ RPM_DISTRIBUTIONS = [
         "color": "purple",
         "package_manager": "dnf",
         "grype_distro": "centos:9",
+    },
+    {
+        "codename": "centos-stream10",
+        "name": "CentOS Stream 10",
+        "full_name": "CentOS Stream 10",
+        "os": "centos",
+        "version": "10",
+        "badge": "Upstream RHEL",
+        "color": "purple",
+        "package_manager": "dnf",
+        "grype_distro": "centos:10",
     },
     {
         "codename": "oraclelinux8",
@@ -81,17 +115,65 @@ RPM_DISTRIBUTIONS = [
         "package_manager": "dnf",
         "grype_distro": "oraclelinux:8",
     },
+    {
+        "codename": "oraclelinux9",
+        "name": "Oracle Linux 9",
+        "full_name": "Oracle Linux 9 — Red Tiger",
+        "os": "oraclelinux",
+        "version": "9",
+        "badge": "RHEL-compat",
+        "color": "red",
+        "package_manager": "dnf",
+        "grype_distro": "oraclelinux:9",
+    },
+    {
+        "codename": "oraclelinux10",
+        "name": "Oracle Linux 10",
+        "full_name": "Oracle Linux 10",
+        "os": "oraclelinux",
+        "version": "10",
+        "badge": "RHEL-compat",
+        "color": "red",
+        "package_manager": "dnf",
+        "grype_distro": "oraclelinux:10",
+    },
     # ── Fedora ────────────────────────────────────────────────────────────────
+    # "fedora" (sans suffixe) désigne historiquement Fedora 42, désormais EOL.
+    # Les releases suivantes ont chacune leur codename versionné : partager un
+    # seul codename mélangerait leurs paquets et fausserait le --distro passé
+    # à Grype.
     {
         "codename": "fedora",
-        "name": "Fedora",
-        "full_name": "Fedora 42",
+        "name": "Fedora 42",
+        "full_name": "Fedora 42 (EOL)",
         "os": "fedora",
         "version": "42",
+        "badge": "EOL",
+        "color": "gray",
+        "package_manager": "dnf",
+        "grype_distro": "fedora:42",
+    },
+    {
+        "codename": "fedora43",
+        "name": "Fedora 43",
+        "full_name": "Fedora 43",
+        "os": "fedora",
+        "version": "43",
         "badge": "Upstream",
         "color": "blue",
         "package_manager": "dnf",
-        "grype_distro": "fedora:42",
+        "grype_distro": "fedora:43",
+    },
+    {
+        "codename": "fedora44",
+        "name": "Fedora 44",
+        "full_name": "Fedora 44",
+        "os": "fedora",
+        "version": "44",
+        "badge": "Upstream",
+        "color": "blue",
+        "package_manager": "dnf",
+        "grype_distro": "fedora:44",
     },
     # ── openSUSE ──────────────────────────────────────────────────────────────
     {
@@ -104,6 +186,17 @@ RPM_DISTRIBUTIONS = [
         "color": "teal",
         "package_manager": "zypper",
         "grype_distro": "opensuse/leap:15.6",
+    },
+    {
+        "codename": "opensuse-leap-16.0",
+        "name": "openSUSE Leap 16.0",
+        "full_name": "openSUSE Leap 16.0",
+        "os": "opensuse",
+        "version": "16.0",
+        "badge": "SUSE-stable",
+        "color": "teal",
+        "package_manager": "zypper",
+        "grype_distro": "opensuse/leap:16.0",
     },
     {
         "codename": "opensuse-tumbleweed",
@@ -130,26 +223,41 @@ SOURCE_TO_DISTRIB: dict[str, str] = {
     "almalinux8-extras":          "almalinux8",
     "almalinux9-baseos":          "almalinux9",
     "almalinux9-appstream":       "almalinux9",
+    "almalinux10-baseos":         "almalinux10",
+    "almalinux10-appstream":      "almalinux10",
     # Rocky Linux
     "rocky8-baseos":              "rocky8",
     "rocky8-appstream":           "rocky8",
     "rocky9-baseos":              "rocky9",
     "rocky9-appstream":           "rocky9",
+    "rocky10-baseos":             "rocky10",
+    "rocky10-appstream":          "rocky10",
     # CentOS Stream
     "centos-stream9-baseos":      "centos-stream9",
     "centos-stream9-appstream":   "centos-stream9",
+    "centos-stream10-baseos":     "centos-stream10",
+    "centos-stream10-appstream":  "centos-stream10",
     # Oracle Linux
     "oraclelinux8-baseos":        "oraclelinux8",
     "oraclelinux8-appstream":     "oraclelinux8",
-    "oraclelinux9-baseos":        "oraclelinux8",   # pas de distro oraclelinux9 encore
+    "oraclelinux9-baseos":        "oraclelinux9",
+    "oraclelinux9-appstream":     "oraclelinux9",
+    "oraclelinux10-baseos":       "oraclelinux10",
+    "oraclelinux10-appstream":    "oraclelinux10",
     # Fedora + EPEL
     "fedora42":                   "fedora",
     "fedora42-updates":           "fedora",
+    "fedora43":                   "fedora43",
+    "fedora43-updates":           "fedora43",
+    "fedora44":                   "fedora44",
+    "fedora44-updates":           "fedora44",
     "epel8":                      "almalinux8",
     "epel9":                      "rocky9",
+    "epel10":                     "almalinux10",
     # openSUSE
     "opensuse-leap-15.6-oss":     "opensuse-leap-15.6",
     "opensuse-leap-15.6-updates": "opensuse-leap-15.6",
+    "opensuse-leap-16.0-oss":     "opensuse-leap-16.0",
     "opensuse-tumbleweed-oss":    "opensuse-tumbleweed",
 }
 

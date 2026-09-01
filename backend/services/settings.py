@@ -62,17 +62,32 @@ _APT_SOURCES: dict = {
     # Ubuntu 20.04 Focal
     "ubuntu-focal":                    True,
     "ubuntu-focal-universe":           True,
+    # Ubuntu 26.04 Resolute
+    "ubuntu-resolute":                 True,
+    "ubuntu-resolute-universe":        True,
+    "ubuntu-resolute-updates":         True,
+    "ubuntu-resolute-updates-universe": True,
     # Debian 12 Bookworm
     "debian-bookworm":                 True,
     "debian-bookworm-contrib":         True,
     "debian-bookworm-non-free":        False,   # désactivé par défaut (non-free)
+    "debian-bookworm-non-free-firmware": False,  # idem : firmware non libre
+    # Debian 13 Trixie
+    "debian-trixie":                   True,
+    "debian-trixie-contrib":           True,
+    "debian-trixie-non-free":          False,   # désactivé par défaut (non-free)
+    "debian-trixie-non-free-firmware": False,   # idem : firmware non libre
+    "debian-trixie-updates":           True,
     # Sources de sécurité
     "ubuntu-jammy-security":           True,
     "ubuntu-jammy-security-universe":  True,
     "ubuntu-noble-security":           True,
     "ubuntu-noble-security-universe":  True,
     "ubuntu-focal-security":           True,
+    "ubuntu-resolute-security":        True,
+    "ubuntu-resolute-security-universe": True,
     "debian-bookworm-security":        True,
+    "debian-trixie-security":          True,
 }
 
 _RPM_SOURCES: dict = {
@@ -82,32 +97,56 @@ _RPM_SOURCES: dict = {
     "almalinux8-extras":          True,
     "almalinux9-baseos":          True,
     "almalinux9-appstream":       True,
+    "almalinux10-baseos":         True,
+    "almalinux10-appstream":      True,
     # ── Rocky Linux ────────────────────────────────────────────────────────────
     "rocky8-baseos":              True,
     "rocky8-appstream":           True,
     "rocky9-baseos":              True,
     "rocky9-appstream":           True,
+    "rocky10-baseos":             True,
+    "rocky10-appstream":          True,
     # ── CentOS Stream ──────────────────────────────────────────────────────────
     "centos-stream9-baseos":      True,
     "centos-stream9-appstream":   True,
+    "centos-stream10-baseos":     True,
+    "centos-stream10-appstream":  True,
     # ── Oracle Linux ───────────────────────────────────────────────────────────
     "oraclelinux8-baseos":        True,
     "oraclelinux8-appstream":     True,
     "oraclelinux9-baseos":        True,
-    # ── Fedora ─────────────────────────────────────────────────────────────────
+    "oraclelinux9-appstream":     True,
+    "oraclelinux10-baseos":       True,
+    "oraclelinux10-appstream":    True,
+    # ── Fedora (42 est EOL — laissée activée pour ne pas perdre l'existant) ────
     "fedora42":                   True,
     "fedora42-updates":           True,
+    "fedora43":                   True,
+    "fedora43-updates":           True,
+    "fedora44":                   True,
+    "fedora44-updates":           True,
     # ── EPEL (désactivé par défaut — volumineuse) ──────────────────────────────
     "epel8":                      False,
     "epel9":                      False,
+    "epel10":                     False,
     # ── openSUSE ───────────────────────────────────────────────────────────────
     "opensuse-leap-15.6-oss":     True,
     "opensuse-leap-15.6-updates": True,
+    "opensuse-leap-16.0-oss":     True,
     "opensuse-tumbleweed-oss":    True,
 }
 
 
 _APK_SOURCES: dict = {
+    # ── Alpine 3.24 ────────────────────────────────────────────────────────────
+    "alpine3.24-main":      True,
+    "alpine3.24-community": True,
+    # ── Alpine 3.23 ────────────────────────────────────────────────────────────
+    "alpine3.23-main":      True,
+    "alpine3.23-community": True,
+    # ── Alpine 3.22 ────────────────────────────────────────────────────────────
+    "alpine3.22-main":      True,
+    "alpine3.22-community": True,
     # ── Alpine 3.21 ────────────────────────────────────────────────────────────
     "alpine3.21-main":      True,
     "alpine3.21-community": True,

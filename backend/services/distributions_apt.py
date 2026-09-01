@@ -1,6 +1,6 @@
 """
 Gestion des distributions reprepro (enterprise).
-Distributions fixes : jammy, noble, focal, bookworm.
+Distributions fixes : focal, jammy, noble, resolute, bookworm, trixie.
 reprepro est exécuté directement dans le container backend (installé dans l'image).
 Les volumes repos/conf, repos/dists, repos/db et repos/pool sont partagés.
 """
@@ -37,9 +37,25 @@ ENTERPRISE_DISTRIBUTIONS = [
         "color": "gray",
     },
     {
+        "codename": "resolute",
+        "name": "Ubuntu 26.04 LTS",
+        "full_name": "Ubuntu 26.04 LTS — Resolute Raccoon",
+        "os": "ubuntu",
+        "badge": "LTS",
+        "color": "purple",
+    },
+    {
         "codename": "bookworm",
         "name": "Debian 12",
         "full_name": "Debian 12 — Bookworm",
+        "os": "debian",
+        "badge": "Oldstable",
+        "color": "red",
+    },
+    {
+        "codename": "trixie",
+        "name": "Debian 13",
+        "full_name": "Debian 13 — Trixie",
         "os": "debian",
         "badge": "Stable",
         "color": "red",
@@ -52,6 +68,9 @@ ALPINE_DISTRIBUTIONS = [
     {"codename": "alpine3.19", "name": "Alpine Linux 3.19", "os": "alpine", "pkg_type": "apk"},
     {"codename": "alpine3.20", "name": "Alpine Linux 3.20", "os": "alpine", "pkg_type": "apk"},
     {"codename": "alpine3.21", "name": "Alpine Linux 3.21", "os": "alpine", "pkg_type": "apk"},
+    {"codename": "alpine3.22", "name": "Alpine Linux 3.22", "os": "alpine", "pkg_type": "apk"},
+    {"codename": "alpine3.23", "name": "Alpine Linux 3.23", "os": "alpine", "pkg_type": "apk"},
+    {"codename": "alpine3.24", "name": "Alpine Linux 3.24", "os": "alpine", "pkg_type": "apk"},
 ]
 
 VALID_CODENAMES = (
@@ -64,11 +83,17 @@ SOURCE_TO_DISTRIB: dict[str, str] = {
     "ubuntu-jammy-updates": "jammy",
     "ubuntu-noble": "noble",
     "ubuntu-focal": "focal",
+    "ubuntu-resolute": "resolute",
+    "ubuntu-resolute-updates": "resolute",
     "debian-bookworm": "bookworm",
+    "debian-trixie": "trixie",
+    "debian-trixie-updates": "trixie",
     "ubuntu-jammy-security": "jammy",
     "ubuntu-noble-security": "noble",
     "ubuntu-focal-security": "focal",
+    "ubuntu-resolute-security": "resolute",
     "debian-bookworm-security": "bookworm",
+    "debian-trixie-security": "trixie",
 }
 
 

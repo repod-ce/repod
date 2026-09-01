@@ -37,6 +37,8 @@ const DIST_COLORS = {
   jammy:    { bg: "#EFF6FF", text: "#1D4ED8", border: "#BFDBFE" },
   noble:    { bg: "#F0FDF4", text: "#15803D", border: "#BBF7D0" },
   focal:    { bg: "#FFF7ED", text: "#C2410C", border: "#FED7AA" },
+  resolute: { bg: "#F5F3FF", text: "#6D28D9", border: "#DDD6FE" },
+  trixie:   { bg: "#FEF2F2", text: "#B91C1C", border: "#FECACA" },
   bookworm: { bg: "#FDF4FF", text: "#7E22CE", border: "#E9D5FF" },
   bullseye: { bg: "#FEF9C3", text: "#854D0E", border: "#FEF08A" },
 };

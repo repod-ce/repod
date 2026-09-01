@@ -243,6 +243,28 @@ DEFAULT_SOURCES = [
         "security": False,
         "format": "rpm",
     },
+    # ── CentOS Stream 10 ───────────────────────────────────────────────────────
+    # Même remarque que Stream 9 : rolling release, pas d'updateinfo.xml.gz.
+    {
+        "id": "centos-stream10-baseos",
+        "label": "CentOS Stream 10 — BaseOS",
+        "repomd_url": "https://mirror.stream.centos.org/10-stream/BaseOS/x86_64/os/repodata/repomd.xml",
+        "distro": "centos-stream10",
+        "arch": "x86_64",
+        "component": "baseos",
+        "security": False,
+        "format": "rpm",
+    },
+    {
+        "id": "centos-stream10-appstream",
+        "label": "CentOS Stream 10 — AppStream",
+        "repomd_url": "https://mirror.stream.centos.org/10-stream/AppStream/x86_64/os/repodata/repomd.xml",
+        "distro": "centos-stream10",
+        "arch": "x86_64",
+        "component": "appstream",
+        "security": False,
+        "format": "rpm",
+    },
     # ── Oracle Linux 8 ─────────────────────────────────────────────────────────
     {
         "id": "oraclelinux8-baseos",
@@ -285,6 +307,28 @@ DEFAULT_SOURCES = [
         "security": True,
         "format": "rpm",
     },
+    # ── Oracle Linux 10 ────────────────────────────────────────────────────────
+    # Même quirk que OL8/OL9 : /latest/ présent sur baseos, absent sur appstream.
+    {
+        "id": "oraclelinux10-baseos",
+        "label": "Oracle Linux 10 — BaseOS",
+        "repomd_url": "https://yum.oracle.com/repo/OracleLinux/OL10/baseos/latest/x86_64/repodata/repomd.xml",
+        "distro": "oraclelinux10",
+        "arch": "x86_64",
+        "component": "baseos",
+        "security": True,
+        "format": "rpm",
+    },
+    {
+        "id": "oraclelinux10-appstream",
+        "label": "Oracle Linux 10 — AppStream",
+        "repomd_url": "https://yum.oracle.com/repo/OracleLinux/OL10/appstream/x86_64/repodata/repomd.xml",
+        "distro": "oraclelinux10",
+        "arch": "x86_64",
+        "component": "appstream",
+        "security": True,
+        "format": "rpm",
+    },
     # ── Fedora 42 ──────────────────────────────────────────────────────────────
     # Fedora 42 est EOL (cycle de support Fedora ~13 mois ; superseded par 43/44).
     # dl.fedoraproject.org ne sert plus que les versions activement maintenues —
@@ -315,6 +359,54 @@ DEFAULT_SOURCES = [
         "security": True,
         "format": "rpm",
     },
+    # ── Fedora 43 / 44 ─────────────────────────────────────────────────────────
+    # Les deux releases actuellement maintenues (Fedora supporte N et N-1).
+    # Contrairement à Fedora 42 ci-dessus, elles sont encore servies par
+    # dl.fedoraproject.org — elles devront migrer vers
+    # archives.fedoraproject.org à leur EOL, comme 42 l'a fait.
+    # Chaque release a son propre codename "distro" : partager "fedora"
+    # mélangerait les paquets de 42/43/44 dans un même inventaire et
+    # fausserait le rapprochement CVE (grype --distro fedora:NN).
+    {
+        "id": "fedora43",
+        "label": "Fedora 43 — Everything",
+        "repomd_url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/43/Everything/x86_64/os/repodata/repomd.xml",
+        "distro": "fedora43",
+        "arch": "x86_64",
+        "component": "everything",
+        "security": False,
+        "format": "rpm",
+    },
+    {
+        "id": "fedora43-updates",
+        "label": "Fedora 43 — Updates",
+        "repomd_url": "https://dl.fedoraproject.org/pub/fedora/linux/updates/43/Everything/x86_64/repodata/repomd.xml",
+        "distro": "fedora43",
+        "arch": "x86_64",
+        "component": "updates",
+        "security": True,
+        "format": "rpm",
+    },
+    {
+        "id": "fedora44",
+        "label": "Fedora 44 — Everything",
+        "repomd_url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/repodata/repomd.xml",
+        "distro": "fedora44",
+        "arch": "x86_64",
+        "component": "everything",
+        "security": False,
+        "format": "rpm",
+    },
+    {
+        "id": "fedora44-updates",
+        "label": "Fedora 44 — Updates",
+        "repomd_url": "https://dl.fedoraproject.org/pub/fedora/linux/updates/44/Everything/x86_64/repodata/repomd.xml",
+        "distro": "fedora44",
+        "arch": "x86_64",
+        "component": "updates",
+        "security": True,
+        "format": "rpm",
+    },
     # ── EPEL (Extra Packages for Enterprise Linux) ─────────────────────────────
     {
         "id": "epel8",
@@ -331,6 +423,18 @@ DEFAULT_SOURCES = [
         "label": "EPEL 9 — Extra Packages",
         "repomd_url": "https://dl.fedoraproject.org/pub/epel/9/Everything/x86_64/repodata/repomd.xml",
         "distro": "rocky9",
+        "arch": "x86_64",
+        "component": "epel",
+        "security": False,
+        "format": "rpm",
+    },
+    {
+        # EPEL 10 est publié sous /epel/10/ (pas de sous-répertoire 10.0/10.1 —
+        # confirmé en direct : 404 sur les deux).
+        "id": "epel10",
+        "label": "EPEL 10 — Extra Packages",
+        "repomd_url": "https://dl.fedoraproject.org/pub/epel/10/Everything/x86_64/repodata/repomd.xml",
+        "distro": "almalinux10",
         "arch": "x86_64",
         "component": "epel",
         "security": False,
@@ -355,6 +459,30 @@ DEFAULT_SOURCES = [
         "arch": "x86_64",
         "component": "updates",
         "security": True,
+        "format": "rpm",
+    },
+    # ── openSUSE Leap 16.0 ─────────────────────────────────────────────────────
+    # Leap est passé de 15.6 directement à 16.0 : il n'existe AUCUN 15.7 sur
+    # download.opensuse.org (confirmé en direct — le listing de
+    # /distribution/leap/ enchaîne 15.6 puis 16.0/16.1).
+    # Deux différences structurelles avec la série 15.x, d'où l'entrée unique
+    # ci-dessous là où 15.6 en a quatre :
+    #   - le dépôt est multi-architecture (aarch64, ppc64le, s390x, x86_64
+    #     sous un même repomd) : /ports/aarch64/ s'arrête à 15.6, il n'y a donc
+    #     pas d'entrée aarch64 séparée — l'arch réelle de chaque paquet vient
+    #     de primary.xml, pas du champ "arch" de la source.
+    #   - aucun dépôt d'updates publié : /update/leap/16.0/ renvoie 404, les
+    #     correctifs Leap 16 ne transitent plus par ce chemin.
+    # 16.1 est volontairement absente : encore en développement à ce jour
+    # (Build41.1 face au Build178.139 de 16.0).
+    {
+        "id": "opensuse-leap-16.0-oss",
+        "label": "openSUSE Leap 16.0 — OSS",
+        "repomd_url": "https://download.opensuse.org/distribution/leap/16.0/repo/oss/repodata/repomd.xml",
+        "distro": "opensuse-leap-16.0",
+        "arch": "x86_64",
+        "component": "oss",
+        "security": False,
         "format": "rpm",
     },
     # ── openSUSE Tumbleweed ─────────────────────────────────────────────────────
@@ -481,6 +609,18 @@ DEFAULT_SOURCES = [
         "repomd_url": "https://mirror.stream.centos.org/9-stream/AppStream/aarch64/os/repodata/repomd.xml",
         "distro": "centos-stream9", "arch": "aarch64", "component": "appstream", "security": False, "format": "rpm",
     },
+    {
+        "id": "centos-stream10-baseos-aarch64",
+        "label": "CentOS Stream 10 — BaseOS [aarch64]",
+        "repomd_url": "https://mirror.stream.centos.org/10-stream/BaseOS/aarch64/os/repodata/repomd.xml",
+        "distro": "centos-stream10", "arch": "aarch64", "component": "baseos", "security": False, "format": "rpm",
+    },
+    {
+        "id": "centos-stream10-appstream-aarch64",
+        "label": "CentOS Stream 10 — AppStream [aarch64]",
+        "repomd_url": "https://mirror.stream.centos.org/10-stream/AppStream/aarch64/os/repodata/repomd.xml",
+        "distro": "centos-stream10", "arch": "aarch64", "component": "appstream", "security": False, "format": "rpm",
+    },
     # Oracle Linux : "baseos" garde le segment /latest/ sur aarch64, mais
     # "appstream" ne l'a PAS (confirmé en direct : 404 avec /latest/, 200 sans)
     # — quirk propre au mirroir Oracle, pas une incohérence à corriger.
@@ -509,6 +649,18 @@ DEFAULT_SOURCES = [
         "distro": "oraclelinux9", "arch": "aarch64", "component": "appstream", "security": True, "format": "rpm",
     },
     {
+        "id": "oraclelinux10-baseos-aarch64",
+        "label": "Oracle Linux 10 — BaseOS [aarch64]",
+        "repomd_url": "https://yum.oracle.com/repo/OracleLinux/OL10/baseos/latest/aarch64/repodata/repomd.xml",
+        "distro": "oraclelinux10", "arch": "aarch64", "component": "baseos", "security": True, "format": "rpm",
+    },
+    {
+        "id": "oraclelinux10-appstream-aarch64",
+        "label": "Oracle Linux 10 — AppStream [aarch64]",
+        "repomd_url": "https://yum.oracle.com/repo/OracleLinux/OL10/appstream/aarch64/repodata/repomd.xml",
+        "distro": "oraclelinux10", "arch": "aarch64", "component": "appstream", "security": True, "format": "rpm",
+    },
+    {
         "id": "fedora42-aarch64",
         "label": "Fedora 42 — Everything [aarch64]",
         "repomd_url": "https://archives.fedoraproject.org/pub/archive/fedora/linux/releases/42/Everything/aarch64/os/repodata/repomd.xml",
@@ -521,6 +673,30 @@ DEFAULT_SOURCES = [
         "distro": "fedora", "arch": "aarch64", "component": "updates", "security": True, "format": "rpm",
     },
     {
+        "id": "fedora43-aarch64",
+        "label": "Fedora 43 — Everything [aarch64]",
+        "repomd_url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/43/Everything/aarch64/os/repodata/repomd.xml",
+        "distro": "fedora43", "arch": "aarch64", "component": "everything", "security": False, "format": "rpm",
+    },
+    {
+        "id": "fedora43-updates-aarch64",
+        "label": "Fedora 43 — Updates [aarch64]",
+        "repomd_url": "https://dl.fedoraproject.org/pub/fedora/linux/updates/43/Everything/aarch64/repodata/repomd.xml",
+        "distro": "fedora43", "arch": "aarch64", "component": "updates", "security": True, "format": "rpm",
+    },
+    {
+        "id": "fedora44-aarch64",
+        "label": "Fedora 44 — Everything [aarch64]",
+        "repomd_url": "https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Everything/aarch64/os/repodata/repomd.xml",
+        "distro": "fedora44", "arch": "aarch64", "component": "everything", "security": False, "format": "rpm",
+    },
+    {
+        "id": "fedora44-updates-aarch64",
+        "label": "Fedora 44 — Updates [aarch64]",
+        "repomd_url": "https://dl.fedoraproject.org/pub/fedora/linux/updates/44/Everything/aarch64/repodata/repomd.xml",
+        "distro": "fedora44", "arch": "aarch64", "component": "updates", "security": True, "format": "rpm",
+    },
+    {
         "id": "epel8-aarch64",
         "label": "EPEL 8 — Extra Packages [aarch64]",
         "repomd_url": "https://dl.fedoraproject.org/pub/epel/8/Everything/aarch64/repodata/repomd.xml",
@@ -531,6 +707,12 @@ DEFAULT_SOURCES = [
         "label": "EPEL 9 — Extra Packages [aarch64]",
         "repomd_url": "https://dl.fedoraproject.org/pub/epel/9/Everything/aarch64/repodata/repomd.xml",
         "distro": "rocky9", "arch": "aarch64", "component": "epel", "security": False, "format": "rpm",
+    },
+    {
+        "id": "epel10-aarch64",
+        "label": "EPEL 10 — Extra Packages [aarch64]",
+        "repomd_url": "https://dl.fedoraproject.org/pub/epel/10/Everything/aarch64/repodata/repomd.xml",
+        "distro": "almalinux10", "arch": "aarch64", "component": "epel", "security": False, "format": "rpm",
     },
     # openSUSE aarch64 est servi sous un préfixe /ports/aarch64/ dédié
     # (confirmé en direct), pas un simple swap x86_64->aarch64 dans l'URL.

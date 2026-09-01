@@ -25,6 +25,8 @@ const DISTRIBUTION_GROUPS = [
       { codename: "jammy",    label: "Ubuntu 22.04 LTS (Jammy)" },
       { codename: "noble",    label: "Ubuntu 24.04 (Noble)"      },
       { codename: "focal",    label: "Ubuntu 20.04 LTS (Focal)"  },
+      { codename: "resolute", label: "Ubuntu 26.04 LTS (Resolute)" },
+      { codename: "trixie",   label: "Debian 13 (Trixie)"        },
       { codename: "bookworm", label: "Debian 12 (Bookworm)"      },
       { codename: "bullseye", label: "Debian 11 (Bullseye)"      },
     ],
@@ -33,10 +35,11 @@ const DISTRIBUTION_GROUPS = [
     group: "RPM — RHEL / AlmaLinux / Rocky / Fedora",
     pm: "rpm",
     items: [
+      { codename: "el10", label: "RHEL / AlmaLinux / Rocky 10"   },
       { codename: "el9",  label: "RHEL / AlmaLinux / Rocky 9"    },
       { codename: "el8",  label: "RHEL / AlmaLinux / Rocky 8"    },
-      { codename: "fc41", label: "Fedora 41"                      },
-      { codename: "fc40", label: "Fedora 40"                      },
+      { codename: "fc44", label: "Fedora 44"                      },
+      { codename: "fc43", label: "Fedora 43"                      },
     ],
   },
   {
@@ -101,9 +104,11 @@ function detectBaseImage(content) {
       distribution = `fc${ver}`;
     } else {
       const aptCodenames = {
+        "resolute": "resolute", "26.04": "resolute",
         "noble": "noble",    "24.04": "noble",
         "jammy": "jammy",    "22.04": "jammy",
         "focal":  "focal",   "20.04": "focal",
+        "trixie": "trixie",
         "bookworm": "bookworm", "bullseye": "bullseye", "buster": "buster",
       };
       for (const [key, codename] of Object.entries(aptCodenames)) {

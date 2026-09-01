@@ -35,9 +35,11 @@ _DISTRO_MAP: dict[str, str] = {
     "focal":    "ubuntu:20.04",
     "jammy":    "ubuntu:22.04",
     "noble":    "ubuntu:24.04",
+    "resolute": "ubuntu:26.04",
     "buster":   "debian:10",
     "bullseye": "debian:11",
     "bookworm": "debian:12",
+    "trixie":   "debian:13",
 }
 
 

@@ -160,12 +160,17 @@ _DIST_META = {
     "jammy":    {"label": "Ubuntu 22.04 LTS"},
     "noble":    {"label": "Ubuntu 24.04 LTS"},
     "focal":    {"label": "Ubuntu 20.04 LTS"},
+    "resolute": {"label": "Ubuntu 26.04 LTS"},
     "bookworm": {"label": "Debian 12"},
+    "trixie":   {"label": "Debian 13"},
     # Alpine Linux (APK — inventaire et CVE uniquement, pas de dépôt reprepro)
     "alpine3.18": {"label": "Alpine Linux 3.18", "pkg_type": "apk"},
     "alpine3.19": {"label": "Alpine Linux 3.19", "pkg_type": "apk"},
     "alpine3.20": {"label": "Alpine Linux 3.20", "pkg_type": "apk"},
     "alpine3.21": {"label": "Alpine Linux 3.21", "pkg_type": "apk"},
+    "alpine3.22": {"label": "Alpine Linux 3.22", "pkg_type": "apk"},
+    "alpine3.23": {"label": "Alpine Linux 3.23", "pkg_type": "apk"},
+    "alpine3.24": {"label": "Alpine Linux 3.24", "pkg_type": "apk"},
 }
 
 

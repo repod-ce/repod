@@ -239,6 +239,8 @@ export default function UploadForm() {
           { codename: "jammy",    name: "Ubuntu 22.04 LTS (Jammy)", format: "deb" },
           { codename: "noble",    name: "Ubuntu 24.04 LTS (Noble)", format: "deb" },
           { codename: "focal",    name: "Ubuntu 20.04 LTS (Focal)", format: "deb" },
+          { codename: "resolute", name: "Ubuntu 26.04 LTS (Resolute)", format: "deb" },
+          { codename: "trixie",   name: "Debian 13 (Trixie)",       format: "deb" },
           { codename: "bookworm", name: "Debian 12 (Bookworm)",     format: "deb" },
         ]);
       });

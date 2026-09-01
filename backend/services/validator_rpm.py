@@ -33,12 +33,22 @@ POOL_DIR = Path(os.getenv("POOL_DIR", "/repos/pool"))
 # Correspondance codename RPM → chaîne distro Grype
 _DISTRO_MAP: dict[str, str] = {
     "almalinux8":           "almalinux:8",
+    "almalinux9":           "almalinux:9",
+    "almalinux10":          "almalinux:10",
     "rocky8":               "rockylinux:8",
+    "rocky9":               "rockylinux:9",
+    "rocky10":              "rockylinux:10",
     "centos-stream9":       "centos:9",
+    "centos-stream10":      "centos:10",
     "oraclelinux8":         "oraclelinux:8",
-    "fedora":               "fedora:latest",
+    "oraclelinux9":         "oraclelinux:9",
+    "oraclelinux10":        "oraclelinux:10",
+    "fedora":               "fedora:42",
+    "fedora43":             "fedora:43",
+    "fedora44":             "fedora:44",
     "opensuse-leap-15.5":   "opensuse/leap:15.5",
     "opensuse-leap-15.6":   "opensuse/leap:15.6",
+    "opensuse-leap-16.0":   "opensuse/leap:16.0",
     "opensuse-leap":        "opensuse/leap:latest",
     "opensuse-tumbleweed":  "opensuse/tumbleweed:latest",
 }

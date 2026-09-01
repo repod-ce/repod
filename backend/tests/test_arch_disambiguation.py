@@ -203,37 +203,51 @@ class TestDistributionsConfSelfHeal:
     répare tout seul au prochain redémarrage plutôt que de rester bloqué en
     amd64-only indéfiniment."""
 
+    @staticmethod
+    def _write_conf(conf_dir, architectures: str) -> None:
+        """
+        Écrit un conf/distributions listant TOUTES les distributions APT
+        connues, avec la ligne Architectures fournie.
+
+        Le contenu est dérivé de _DIST_META plutôt que codé en dur : ces deux
+        tests portent sur la ligne Architectures, pas sur la liste des
+        distributions — les figer ici ferait échouer le test "complet" à
+        chaque ajout d'une distro (trixie, resolute…) alors que le code se
+        comporte correctement.
+        """
+        from routers.distributions_router import _DIST_META
+
+        blocks = [
+            f"Origin: Repod\nLabel: {meta['label']}\nCodename: {codename}\n"
+            f"Architectures: {architectures}\nComponents: main\n"
+            for codename, meta in _DIST_META.items()
+            if meta.get("pkg_type") != "apk"
+        ]
+        (conf_dir / "distributions").write_text("\n".join(blocks))
+
     def test_amd64_only_conf_is_incomplete(self, tmp_path):
         from routers.distributions_router import _distributions_conf_is_complete
 
-        conf_dir = tmp_path
-        (conf_dir / "distributions").write_text(
-            "Origin: Repod\nLabel: Ubuntu 22.04 LTS\nCodename: jammy\n"
-            "Architectures: amd64\nComponents: main\n\n"
-            "Origin: Repod\nLabel: Ubuntu 24.04 LTS\nCodename: noble\n"
-            "Architectures: amd64\nComponents: main\n\n"
-            "Origin: Repod\nLabel: Ubuntu 20.04 LTS\nCodename: focal\n"
-            "Architectures: amd64\nComponents: main\n\n"
-            "Origin: Repod\nLabel: Debian 12\nCodename: bookworm\n"
-            "Architectures: amd64\nComponents: main\n"
-        )
-        assert _distributions_conf_is_complete(conf_dir) is False
+        self._write_conf(tmp_path, "amd64")
+        assert _distributions_conf_is_complete(tmp_path) is False
 
     def test_amd64_and_arm64_conf_is_complete(self, tmp_path):
         from routers.distributions_router import _distributions_conf_is_complete
 
-        conf_dir = tmp_path
-        (conf_dir / "distributions").write_text(
+        self._write_conf(tmp_path, "amd64 arm64")
+        assert _distributions_conf_is_complete(tmp_path) is True
+
+    def test_missing_distribution_is_incomplete(self, tmp_path):
+        """Une distro APT connue absente du fichier doit déclencher la
+        régénération — c'est ce qui fait apparaître trixie/resolute sur un
+        déploiement initialisé avant leur ajout."""
+        from routers.distributions_router import _distributions_conf_is_complete
+
+        (tmp_path / "distributions").write_text(
             "Origin: Repod\nLabel: Ubuntu 22.04 LTS\nCodename: jammy\n"
-            "Architectures: amd64 arm64\nComponents: main\n\n"
-            "Origin: Repod\nLabel: Ubuntu 24.04 LTS\nCodename: noble\n"
-            "Architectures: amd64 arm64\nComponents: main\n\n"
-            "Origin: Repod\nLabel: Ubuntu 20.04 LTS\nCodename: focal\n"
-            "Architectures: amd64 arm64\nComponents: main\n\n"
-            "Origin: Repod\nLabel: Debian 12\nCodename: bookworm\n"
             "Architectures: amd64 arm64\nComponents: main\n"
         )
-        assert _distributions_conf_is_complete(conf_dir) is True
+        assert _distributions_conf_is_complete(tmp_path) is False
 
     def test_missing_file_is_incomplete(self, tmp_path):
         from routers.distributions_router import _distributions_conf_is_complete

@@ -704,27 +704,41 @@ const DISTRIB_COLORS = {
   jammy:           "bg-orange-100 text-orange-700",
   noble:           "bg-green-100 text-green-700",
   focal:           "bg-gray-100  text-gray-600",
+  resolute:        "bg-purple-100 text-purple-700",
+  trixie:          "bg-red-100   text-red-700",
   bookworm:        "bg-red-100   text-red-700",
   bullseye:        "bg-red-100   text-red-600",
   buster:          "bg-red-50    text-red-500",
   // RPM — AlmaLinux
   almalinux8:      "bg-blue-100  text-blue-700",
   almalinux9:      "bg-blue-100  text-blue-700",
+  almalinux10:     "bg-blue-100  text-blue-700",
   // RPM — Rocky Linux
   rocky8:          "bg-emerald-100 text-emerald-700",
   rocky9:          "bg-emerald-100 text-emerald-700",
+  rocky10:         "bg-emerald-100 text-emerald-700",
   // RPM — CentOS Stream
   "centos-stream9": "bg-purple-100 text-purple-700",
+  "centos-stream10": "bg-purple-100 text-purple-700",
   "centos-stream8": "bg-purple-100 text-purple-600",
   // RPM — Oracle Linux
   oraclelinux8:    "bg-red-100   text-red-800",
   oraclelinux9:    "bg-red-100   text-red-800",
+  oraclelinux10:   "bg-red-100   text-red-800",
   // RPM — Fedora
   fedora:          "bg-indigo-100 text-indigo-700",
   fedora42:        "bg-indigo-100 text-indigo-700",
+  fedora43:        "bg-indigo-100 text-indigo-700",
+  fedora44:        "bg-indigo-100 text-indigo-700",
   // RPM — openSUSE
   "opensuse-leap-15.6":   "bg-teal-100 text-teal-700",
+  "opensuse-leap-16.0":   "bg-teal-100 text-teal-700",
   "opensuse-tumbleweed":  "bg-teal-100 text-teal-600",
+  // APK — Alpine
+  "alpine3.21":    "bg-sky-100 text-sky-700",
+  "alpine3.22":    "bg-sky-100 text-sky-700",
+  "alpine3.23":    "bg-sky-100 text-sky-700",
+  "alpine3.24":    "bg-sky-100 text-sky-700",
 };
 
 // Fallback statique si l'API distributions n'est pas disponible
@@ -734,16 +748,24 @@ const DISTRIB_TABS_FALLBACK = [
   { id: "jammy",     label: "Jammy 22.04",           group: "apt"  },
   { id: "noble",     label: "Noble 24.04",           group: "apt"  },
   { id: "focal",     label: "Focal 20.04",           group: "apt"  },
+  { id: "resolute",  label: "Resolute 26.04",        group: "apt"  },
+  { id: "trixie",    label: "Trixie 13",             group: "apt"  },
   { id: "bookworm",  label: "Bookworm 12",           group: "apt"  },
   // RPM — RHEL family
+  { id: "almalinux10",  label: "AlmaLinux 10",       group: "rpm"  },
   { id: "almalinux9",   label: "AlmaLinux 9",        group: "rpm"  },
   { id: "almalinux8",   label: "AlmaLinux 8",        group: "rpm"  },
+  { id: "rocky10",      label: "Rocky 10",           group: "rpm"  },
   { id: "rocky9",       label: "Rocky 9",            group: "rpm"  },
   { id: "rocky8",       label: "Rocky 8",            group: "rpm"  },
+  { id: "centos-stream10", label: "CentOS Stream 10", group: "rpm" },
   { id: "centos-stream9", label: "CentOS Stream 9",  group: "rpm"  },
+  { id: "oraclelinux10", label: "Oracle Linux 10",   group: "rpm"  },
   { id: "oraclelinux9", label: "Oracle Linux 9",     group: "rpm"  },
-  { id: "fedora42",     label: "Fedora 42",          group: "rpm"  },
+  { id: "fedora44",     label: "Fedora 44",          group: "rpm"  },
+  { id: "fedora43",     label: "Fedora 43",          group: "rpm"  },
   // RPM — openSUSE
+  { id: "opensuse-leap-16.0",   label: "Leap 16.0",       group: "zypper" },
   { id: "opensuse-leap-15.6",   label: "Leap 15.6",       group: "zypper" },
   { id: "opensuse-tumbleweed",  label: "Tumbleweed",       group: "zypper" },
 ];

@@ -64,7 +64,70 @@ _APK_KEYS_DIR = os.getenv(
 _ALPINE_CDN = "https://dl-cdn.alpinelinux.org/alpine"
 
 DEFAULT_SOURCES = [
-    # ── Alpine 3.21 (LTS actuelle) ────────────────────────────────────────────
+    # ── Alpine 3.24 (branche stable actuelle) ─────────────────────────────────
+    {
+        "id": "alpine3.24-main",
+        "label": "Alpine 3.24 — main",
+        "apkindex_url": f"{_ALPINE_CDN}/v3.24/main/x86_64/APKINDEX.tar.gz",
+        "distro": "alpine3.24",
+        "arch": "x86_64",
+        "component": "main",
+        "format": "apk",
+        "security": False,
+    },
+    {
+        "id": "alpine3.24-community",
+        "label": "Alpine 3.24 — community",
+        "apkindex_url": f"{_ALPINE_CDN}/v3.24/community/x86_64/APKINDEX.tar.gz",
+        "distro": "alpine3.24",
+        "arch": "x86_64",
+        "component": "community",
+        "format": "apk",
+        "security": False,
+    },
+    # ── Alpine 3.23 ───────────────────────────────────────────────────────────
+    {
+        "id": "alpine3.23-main",
+        "label": "Alpine 3.23 — main",
+        "apkindex_url": f"{_ALPINE_CDN}/v3.23/main/x86_64/APKINDEX.tar.gz",
+        "distro": "alpine3.23",
+        "arch": "x86_64",
+        "component": "main",
+        "format": "apk",
+        "security": False,
+    },
+    {
+        "id": "alpine3.23-community",
+        "label": "Alpine 3.23 — community",
+        "apkindex_url": f"{_ALPINE_CDN}/v3.23/community/x86_64/APKINDEX.tar.gz",
+        "distro": "alpine3.23",
+        "arch": "x86_64",
+        "component": "community",
+        "format": "apk",
+        "security": False,
+    },
+    # ── Alpine 3.22 ───────────────────────────────────────────────────────────
+    {
+        "id": "alpine3.22-main",
+        "label": "Alpine 3.22 — main",
+        "apkindex_url": f"{_ALPINE_CDN}/v3.22/main/x86_64/APKINDEX.tar.gz",
+        "distro": "alpine3.22",
+        "arch": "x86_64",
+        "component": "main",
+        "format": "apk",
+        "security": False,
+    },
+    {
+        "id": "alpine3.22-community",
+        "label": "Alpine 3.22 — community",
+        "apkindex_url": f"{_ALPINE_CDN}/v3.22/community/x86_64/APKINDEX.tar.gz",
+        "distro": "alpine3.22",
+        "arch": "x86_64",
+        "component": "community",
+        "format": "apk",
+        "security": False,
+    },
+    # ── Alpine 3.21 ───────────────────────────────────────────────────────────
     {
         "id": "alpine3.21-main",
         "label": "Alpine 3.21 — main",
@@ -153,6 +216,42 @@ DEFAULT_SOURCES = [
     # signe aarch64 avec une clé RSA DIFFÉRENTE de x86_64 (confirmé en direct
     # sur les 8 sources : alpine-devel@...-616ae350.rsa.pub, pas -6165ee59) —
     # voir scripts/gen-apk-keys.sh, cette seconde clé y est déjà déclarée.
+    {
+        "id": "alpine3.24-main-aarch64",
+        "label": "Alpine 3.24 — main [aarch64]",
+        "apkindex_url": f"{_ALPINE_CDN}/v3.24/main/aarch64/APKINDEX.tar.gz",
+        "distro": "alpine3.24", "arch": "aarch64", "component": "main", "format": "apk", "security": False,
+    },
+    {
+        "id": "alpine3.24-community-aarch64",
+        "label": "Alpine 3.24 — community [aarch64]",
+        "apkindex_url": f"{_ALPINE_CDN}/v3.24/community/aarch64/APKINDEX.tar.gz",
+        "distro": "alpine3.24", "arch": "aarch64", "component": "community", "format": "apk", "security": False,
+    },
+    {
+        "id": "alpine3.23-main-aarch64",
+        "label": "Alpine 3.23 — main [aarch64]",
+        "apkindex_url": f"{_ALPINE_CDN}/v3.23/main/aarch64/APKINDEX.tar.gz",
+        "distro": "alpine3.23", "arch": "aarch64", "component": "main", "format": "apk", "security": False,
+    },
+    {
+        "id": "alpine3.23-community-aarch64",
+        "label": "Alpine 3.23 — community [aarch64]",
+        "apkindex_url": f"{_ALPINE_CDN}/v3.23/community/aarch64/APKINDEX.tar.gz",
+        "distro": "alpine3.23", "arch": "aarch64", "component": "community", "format": "apk", "security": False,
+    },
+    {
+        "id": "alpine3.22-main-aarch64",
+        "label": "Alpine 3.22 — main [aarch64]",
+        "apkindex_url": f"{_ALPINE_CDN}/v3.22/main/aarch64/APKINDEX.tar.gz",
+        "distro": "alpine3.22", "arch": "aarch64", "component": "main", "format": "apk", "security": False,
+    },
+    {
+        "id": "alpine3.22-community-aarch64",
+        "label": "Alpine 3.22 — community [aarch64]",
+        "apkindex_url": f"{_ALPINE_CDN}/v3.22/community/aarch64/APKINDEX.tar.gz",
+        "distro": "alpine3.22", "arch": "aarch64", "component": "community", "format": "apk", "security": False,
+    },
     {
         "id": "alpine3.21-main-aarch64",
         "label": "Alpine 3.21 — main [aarch64]",

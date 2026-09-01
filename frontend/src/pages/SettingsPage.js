@@ -28,32 +28,54 @@ const SOURCE_META = {
   "ubuntu-jammy-updates":     { label: "Ubuntu 22.04 (Jammy) — updates",     security: false, format: "deb" },
   "ubuntu-noble":             { label: "Ubuntu 24.04 (Noble) — base",        security: false, format: "deb" },
   "ubuntu-focal":             { label: "Ubuntu 20.04 (Focal) — base",        security: false, format: "deb" },
+  "ubuntu-resolute":          { label: "Ubuntu 26.04 (Resolute) — base",     security: false, format: "deb" },
+  "ubuntu-resolute-updates":  { label: "Ubuntu 26.04 (Resolute) — updates",  security: true,  format: "deb" },
   "debian-bookworm":          { label: "Debian 12 (Bookworm) — base",        security: false, format: "deb" },
+  "debian-trixie":            { label: "Debian 13 (Trixie) — base",          security: false, format: "deb" },
+  "debian-trixie-contrib":    { label: "Debian 13 (Trixie) — contrib",       security: false, format: "deb" },
+  "debian-trixie-updates":    { label: "Debian 13 (Trixie) — updates",       security: true,  format: "deb" },
   "ubuntu-jammy-security":    { label: "Ubuntu 22.04 Security",              security: true,  format: "deb" },
   "ubuntu-noble-security":    { label: "Ubuntu 24.04 Security",              security: true,  format: "deb" },
   "ubuntu-focal-security":    { label: "Ubuntu 20.04 Security",              security: true,  format: "deb" },
+  "ubuntu-resolute-security": { label: "Ubuntu 26.04 Security",              security: true,  format: "deb" },
   "debian-bookworm-security": { label: "Debian 12 Security",                 security: true,  format: "deb" },
+  "debian-trixie-security":   { label: "Debian 13 Security",                 security: true,  format: "deb" },
   // ── RPM (RHEL / Fedora / openSUSE) ───────────────────────────────────────
   "almalinux8-baseos":        { label: "AlmaLinux 8 — BaseOS",               security: false, format: "rpm" },
   "almalinux8-appstream":     { label: "AlmaLinux 8 — AppStream",            security: false, format: "rpm" },
   "almalinux8-extras":        { label: "AlmaLinux 8 — Extras",               security: false, format: "rpm" },
   "almalinux9-baseos":        { label: "AlmaLinux 9 — BaseOS",               security: false, format: "rpm" },
   "almalinux9-appstream":     { label: "AlmaLinux 9 — AppStream",            security: false, format: "rpm" },
+  "almalinux10-baseos":       { label: "AlmaLinux 10 — BaseOS",              security: false, format: "rpm" },
+  "almalinux10-appstream":    { label: "AlmaLinux 10 — AppStream",           security: false, format: "rpm" },
   "rocky8-baseos":            { label: "Rocky Linux 8 — BaseOS",             security: false, format: "rpm" },
   "rocky8-appstream":         { label: "Rocky Linux 8 — AppStream",          security: false, format: "rpm" },
   "rocky9-baseos":            { label: "Rocky Linux 9 — BaseOS",             security: false, format: "rpm" },
   "rocky9-appstream":         { label: "Rocky Linux 9 — AppStream",          security: false, format: "rpm" },
+  "rocky10-baseos":           { label: "Rocky Linux 10 — BaseOS",            security: false, format: "rpm" },
+  "rocky10-appstream":        { label: "Rocky Linux 10 — AppStream",         security: false, format: "rpm" },
   "centos-stream9-baseos":    { label: "CentOS Stream 9 — BaseOS",           security: false, format: "rpm" },
   "centos-stream9-appstream": { label: "CentOS Stream 9 — AppStream",        security: false, format: "rpm" },
+  "centos-stream10-baseos":   { label: "CentOS Stream 10 — BaseOS",          security: false, format: "rpm" },
+  "centos-stream10-appstream":{ label: "CentOS Stream 10 — AppStream",       security: false, format: "rpm" },
   "oraclelinux8-baseos":      { label: "Oracle Linux 8 — BaseOS",            security: false, format: "rpm" },
   "oraclelinux8-appstream":   { label: "Oracle Linux 8 — AppStream",         security: false, format: "rpm" },
   "oraclelinux9-baseos":      { label: "Oracle Linux 9 — BaseOS",            security: false, format: "rpm" },
-  "fedora42":                 { label: "Fedora 42",                          security: false, format: "rpm" },
-  "fedora42-updates":         { label: "Fedora 42 — Updates",                security: false, format: "rpm" },
+  "oraclelinux9-appstream":   { label: "Oracle Linux 9 — AppStream",         security: false, format: "rpm" },
+  "oraclelinux10-baseos":     { label: "Oracle Linux 10 — BaseOS",           security: false, format: "rpm" },
+  "oraclelinux10-appstream":  { label: "Oracle Linux 10 — AppStream",        security: false, format: "rpm" },
+  "fedora42":                 { label: "Fedora 42 (EOL)",                    security: false, format: "rpm" },
+  "fedora42-updates":         { label: "Fedora 42 — Updates (EOL)",          security: false, format: "rpm" },
+  "fedora43":                 { label: "Fedora 43",                          security: false, format: "rpm" },
+  "fedora43-updates":         { label: "Fedora 43 — Updates",                security: true,  format: "rpm" },
+  "fedora44":                 { label: "Fedora 44",                          security: false, format: "rpm" },
+  "fedora44-updates":         { label: "Fedora 44 — Updates",                security: true,  format: "rpm" },
   "epel8":                    { label: "EPEL 8 (extras RHEL 8)",             security: false, format: "rpm" },
   "epel9":                    { label: "EPEL 9 (extras RHEL 9)",             security: false, format: "rpm" },
+  "epel10":                   { label: "EPEL 10 (extras RHEL 10)",           security: false, format: "rpm" },
   "opensuse-leap-15.6-oss":   { label: "openSUSE Leap 15.6 — OSS",          security: false, format: "rpm" },
   "opensuse-leap-15.6-updates":{ label: "openSUSE Leap 15.6 — Updates",     security: false, format: "rpm" },
+  "opensuse-leap-16.0-oss":   { label: "openSUSE Leap 16.0 — OSS",          security: false, format: "rpm" },
   "opensuse-tumbleweed-oss":  { label: "openSUSE Tumbleweed — OSS",          security: false, format: "rpm" },
   // ── APK (Alpine Linux) ───────────────────────────────────────────────────
   "alpine3.18-main":          { label: "Alpine 3.18 — main",                 security: false, format: "apk" },
@@ -64,6 +86,12 @@ const SOURCE_META = {
   "alpine3.20-community":     { label: "Alpine 3.20 — community",            security: false, format: "apk" },
   "alpine3.21-main":          { label: "Alpine 3.21 — main",                 security: false, format: "apk" },
   "alpine3.21-community":     { label: "Alpine 3.21 — community",            security: false, format: "apk" },
+  "alpine3.22-main":          { label: "Alpine 3.22 — main",                 security: false, format: "apk" },
+  "alpine3.22-community":     { label: "Alpine 3.22 — community",            security: false, format: "apk" },
+  "alpine3.23-main":          { label: "Alpine 3.23 — main",                 security: false, format: "apk" },
+  "alpine3.23-community":     { label: "Alpine 3.23 — community",            security: false, format: "apk" },
+  "alpine3.24-main":          { label: "Alpine 3.24 — main",                 security: false, format: "apk" },
+  "alpine3.24-community":     { label: "Alpine 3.24 — community",            security: false, format: "apk" },
 };
 
 // ─── Composants utilitaires ───────────────────────────────────────────────────
@@ -1534,7 +1562,7 @@ services:
       context: .
       args:
         RPM_REPO_URL: "${RPM_REPO_URL}"
-        RPM_DISTRO: "almalinux9"  # almalinux8/9 | rocky8/9 | centos-stream9 | fedora
+        RPM_DISTRO: "almalinux9"  # almalinux8/9/10 | rocky8/9/10 | centos-stream9/10 | fedora43/44
 
 # Dockerfile correspondant :
 # FROM almalinux:9
@@ -1556,7 +1584,7 @@ services:
       context: .
       args:
         APK_REPO_URL: "${REPO_URL}"
-        ALPINE_VERSION: "alpine3.21"  # alpine3.18 | alpine3.19 | alpine3.20 | alpine3.21
+        ALPINE_VERSION: "alpine3.24"  # alpine3.18 → alpine3.24
 
 # Dockerfile correspondant :
 # FROM alpine:3.21
@@ -1614,7 +1642,7 @@ services:
     image: alpine:3.21
     environment:
       <<: *repod-env
-      ALPINE_VERSION: "alpine3.21"
+      ALPINE_VERSION: "alpine3.24"
     command: |
       sh -c "
         echo $$APK_REPO_URL/apk/$$ALPINE_VERSION/main >> /etc/apk/repositories

@@ -37,6 +37,9 @@ APK_DISTRIBUTIONS = [
     {"codename": "alpine3.19", "name": "Alpine Linux 3.19", "arch": ["x86_64", "aarch64"]},
     {"codename": "alpine3.20", "name": "Alpine Linux 3.20", "arch": ["x86_64", "aarch64"]},
     {"codename": "alpine3.21", "name": "Alpine Linux 3.21", "arch": ["x86_64", "aarch64"]},
+    {"codename": "alpine3.22", "name": "Alpine Linux 3.22", "arch": ["x86_64", "aarch64"]},
+    {"codename": "alpine3.23", "name": "Alpine Linux 3.23", "arch": ["x86_64", "aarch64"]},
+    {"codename": "alpine3.24", "name": "Alpine Linux 3.24", "arch": ["x86_64", "aarch64"]},
 ]
 
 VALID_APK_CODENAMES: set[str] = {d["codename"] for d in APK_DISTRIBUTIONS}

@@ -44,7 +44,11 @@ _DISTRO_MAP: dict[str, str] = {
     "alpine3.19": "alpine:3.19",
     "alpine3.20": "alpine:3.20",
     "alpine3.21": "alpine:3.21",
-    "alpine":     "alpine:3.21",
+    "alpine3.22": "alpine:3.22",
+    "alpine3.23": "alpine:3.23",
+    "alpine3.24": "alpine:3.24",
+    # Repli quand aucune version n'est précisée : la branche stable courante.
+    "alpine":     "alpine:3.24",
 }
 
 # ── Étape 1 : Format ──────────────────────────────────────────────────────────

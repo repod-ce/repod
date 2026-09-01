@@ -82,8 +82,10 @@ done
 # (Docker crée les bind-mounts manquants en root:root, appuser ne peut pas écrire)
 # REPO_BASE peut valoir /repos (mode rpm seul) ou /repos/rpm (mode both)
 RPM_REPO_BASE="${REPO_BASE:-/repos}"
-for DISTRO in almalinux8 almalinux9 rocky8 rocky9 centos-stream9 oraclelinux8 \
-              oraclelinux9 fedora opensuse-leap-15.5 opensuse-leap-15.6 \
+for DISTRO in almalinux8 almalinux9 almalinux10 rocky8 rocky9 rocky10 \
+              centos-stream9 centos-stream10 oraclelinux8 oraclelinux9 \
+              oraclelinux10 fedora fedora43 fedora44 \
+              opensuse-leap-15.5 opensuse-leap-15.6 opensuse-leap-16.0 \
               opensuse-leap opensuse-tumbleweed; do
     for ARCH in x86_64 aarch64 noarch; do
         mkdir -p "${RPM_REPO_BASE}/${DISTRO}/${ARCH}/repodata" 2>/dev/null || true
