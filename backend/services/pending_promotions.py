@@ -24,7 +24,8 @@ from threading import Lock
 PENDING_DIR = Path(
     os.getenv("PENDING_PROMOTIONS_DIR", "/repos/security/pending_promotions")
 )
-PENDING_DIR.mkdir(parents=True, exist_ok=True)
+# Répertoire créé par create_pending(), jamais à l'import, voir
+# services/component_sbom.py. Les lecteurs passent par PENDING_DIR.glob().
 
 _lock = Lock()
 
@@ -112,6 +113,7 @@ def create_pending(
         "decision_note":  decision_note,
     }
     with _lock:
+        PENDING_DIR.mkdir(parents=True, exist_ok=True)
         _path(pending_id).write_text(
             json.dumps(record, indent=2, ensure_ascii=False),
             encoding="utf-8",

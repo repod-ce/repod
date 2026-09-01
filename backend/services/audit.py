@@ -9,7 +9,8 @@ from pathlib import Path
 from threading import Lock
 
 AUDIT_DIR = Path(os.getenv("AUDIT_DIR", "/repos/audit"))
-AUDIT_DIR.mkdir(parents=True, exist_ok=True)
+# Répertoire créé par log(), jamais à l'import, voir services/component_sbom.py.
+# Les lecteurs passent tous par AUDIT_DIR.glob("*.jsonl"), vide si absent.
 
 _lock = Lock()
 
@@ -50,6 +51,7 @@ def log(
         entry.update(extra)
 
     with _lock:
+        AUDIT_DIR.mkdir(parents=True, exist_ok=True)
         with open(_audit_file(), "a") as f:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 

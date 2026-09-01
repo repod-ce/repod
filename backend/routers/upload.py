@@ -61,8 +61,16 @@ POOL_DIR           = Path(os.getenv("POOL_DIR",           "/repos/pool"))
 ADD_DEB_SCRIPT     = os.getenv("ADD_DEB_SCRIPT",          "/scripts/add-deb.sh")
 ADD_RPM_SCRIPT     = os.getenv("ADD_RPM_SCRIPT",          "/scripts/add-rpm.sh")
 
-for _d in [STAGING_INCOMING, STAGING_QUARANTINE, POOL_DIR]:
-    _d.mkdir(parents=True, exist_ok=True)
+
+def _ensure_upload_dirs() -> None:
+    """Crée staging/quarantine/pool au premier upload plutôt qu'à l'import du
+    module. Importer un module ne doit jamais toucher au filesystem, sinon
+    `import routers` échoue là où /repos n'est pas inscriptible (collecte
+    pytest). Même convention que services/component_sbom.py. Les lecteurs de
+    POOL_DIR passent tous par glob()/rglob(), vides si le répertoire est absent.
+    """
+    for _d in (STAGING_INCOMING, STAGING_QUARANTINE, POOL_DIR):
+        _d.mkdir(parents=True, exist_ok=True)
 
 
 def _cve_summary_detail(cve_counts: dict, worst: str | None, kev_count: int) -> str:
@@ -347,6 +355,8 @@ async def upload_package(
                 f"Sélectionnez la bonne distribution ou utilisez un fichier {expected_ext.upper().lstrip('.')}."
             ),
         )
+
+    _ensure_upload_dirs()
 
     # Préfixe UUID pour éviter les races conditions entre uploads concurrents
     staging_path = STAGING_INCOMING / f"{uuid.uuid4().hex}_{safe_filename}"
@@ -821,6 +831,8 @@ async def upload_package_stream(
                 f"Sélectionnez la bonne distribution ou utilisez un fichier {expected_ext.upper().lstrip('.')}."
             ),
         )
+
+    _ensure_upload_dirs()
 
     staging_path = STAGING_INCOMING / f"{uuid.uuid4().hex}_{safe_filename}"
     try:

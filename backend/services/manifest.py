@@ -41,7 +41,9 @@ from services.path_safety import PathTraversalError, safe_path_join
 logger = logging.getLogger("manifest")
 
 MANIFEST_DIR = Path(os.getenv("MANIFEST_DIR", "/repos/manifests"))
-MANIFEST_DIR.mkdir(parents=True, exist_ok=True)
+# Répertoire créé à la première écriture, jamais à l'import, voir
+# services/component_sbom.py. Les lecteurs passent tous par MANIFEST_DIR.glob(),
+# qui renvoie une séquence vide sur un répertoire absent.
 
 
 def _get_default_distribution() -> str:
@@ -488,6 +490,7 @@ def save_manifest(manifest: dict) -> str:
         raise ValueError(f"Métadonnées de paquet invalides (name/version/arch) : {exc}") from exc
 
     # Fichier JSON — backup / outils tiers
+    path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w") as f:
         json.dump(manifest, f, indent=2, ensure_ascii=False)
 

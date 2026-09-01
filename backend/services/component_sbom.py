@@ -26,7 +26,11 @@ from services.path_safety import PathTraversalError, safe_path_join
 logger = logging.getLogger("component_sbom")
 
 SBOM_DIR = Path(os.getenv("SBOM_DIR", "/repos/sboms"))
-SBOM_DIR.mkdir(parents=True, exist_ok=True)
+# Pas de mkdir au niveau module : importer ce module ne doit jamais toucher au
+# filesystem (routers/upload.py l'importe, donc tout `import routers` ferait
+# échouer la collecte pytest là où /repos n'existe pas). Le répertoire est créé
+# à la première écriture, ce qui respecte aussi un SBOM_DIR monkeypatché après
+# import.
 
 
 def sbom_path_for(name: str, version: str, arch: str) -> Path:
@@ -47,6 +51,7 @@ def save_component_sbom(name: str, version: str, arch: str, sbom: dict | None) -
         return
     try:
         path = sbom_path_for(name, version, arch)
+        path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(sbom, ensure_ascii=False), encoding="utf-8")
     except (OSError, PathTraversalError) as exc:
         logger.warning("[component_sbom] Écriture SBOM échouée pour %s %s %s : %s", name, version, arch, exc)

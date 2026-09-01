@@ -30,7 +30,8 @@ from tenacity import (
 logger = logging.getLogger("cve_enrichment")
 
 SECURITY_CACHE_DIR = Path(os.getenv("SECURITY_CACHE_DIR", "/repos/security"))
-SECURITY_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+# Pas de mkdir à l'import, voir services/component_sbom.py. _save_json()
+# crée déjà le répertoire parent avant chaque écriture de cache.
 
 KEV_CACHE_PATH  = SECURITY_CACHE_DIR / "kev_cache.json"
 EPSS_CACHE_PATH = SECURITY_CACHE_DIR / "epss_cache.json"

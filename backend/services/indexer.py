@@ -10,7 +10,8 @@ from pathlib import Path
 from threading import Lock
 
 INDEX_PATH = Path(os.getenv("INDEX_PATH", "/repos/manifests/index.json"))
-INDEX_PATH.parent.mkdir(parents=True, exist_ok=True)
+# Répertoire créé par _save_index(), jamais à l'import, voir
+# services/component_sbom.py. _load_index() teste INDEX_PATH.exists().
 
 _lock = Lock()
 
@@ -64,6 +65,7 @@ def _save_index(index: dict):
     """Écriture atomique : temp file + os.replace() pour éviter la corruption."""
     index["updated_at"] = datetime.now(timezone.utc).isoformat()
     dir_ = INDEX_PATH.parent
+    dir_.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile("w", dir=dir_, delete=False, suffix=".tmp",
                                      encoding="utf-8") as tmp:
         json.dump(index, tmp, indent=2, ensure_ascii=False)
