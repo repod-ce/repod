@@ -212,10 +212,26 @@ def _import_one_locked(pkg_row: dict, distribution: str, user: str, group: str |
     from services.component_sbom import save_component_sbom
     from services.indexer import add_to_index
     from services.manifest import generate_manifest, save_manifest
+    from services.path_safety import PathTraversalError, safe_path_join
     from services.validator import run_validation_pipeline
 
     pkg_name = pkg_row["name"]
     version = pkg_row.get("version")
+
+    # `group` finit en composant de chemin (répertoire du groupe d'import) et
+    # provient soit d'un body d'API jamais validé (ImportRequest.group /
+    # BatchImportRequest.group), soit du nom d'un paquet uploadé
+    # (routers/upload.py). Sans ce contrôle, "../../tmp/x" ou "/tmp/x" fait
+    # écrire le .deb hors de IMPORTS_DIR — pathlib écarte même entièrement la
+    # base pour une valeur absolue. Validé ici, avant tout téléchargement :
+    # d'un seul endroit pour les trois appelants (import_router,
+    # mirror_manager, upload), et sans laisser de .deb orphelin dans POOL_DIR
+    # (la copie vers le pool a lieu plus bas).
+    try:
+        group_dir = safe_path_join(IMPORTS_DIR, group or pkg_name)
+    except PathTraversalError:
+        return {"status": "error", "name": pkg_name, "version": version,
+                "message": "nom de groupe d'import invalide", "steps": []}
 
     # Skip uniquement si CETTE VERSION précise est déjà présente dans le pool
     # hiérarchique reprepro (une version plus ancienne ne doit pas bloquer la
@@ -255,8 +271,7 @@ def _import_one_locked(pkg_row: dict, distribution: str, user: str, group: str |
         dest = POOL_DIR / path.name
         shutil.copy2(str(path), str(dest))
 
-        # Copie dans le répertoire du groupe d'import
-        group_dir = IMPORTS_DIR / (group or pkg_name)
+        # Copie dans le répertoire du groupe d'import (chemin validé en tête)
         group_dir.mkdir(parents=True, exist_ok=True)
         shutil.copy2(str(path), str(group_dir / path.name))
 

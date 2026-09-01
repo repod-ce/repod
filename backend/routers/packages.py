@@ -1,16 +1,10 @@
 from fastapi import APIRouter, HTTPException, Depends, Query
-from services.download import download_package
 from services.search import list_packages
 from services.pagination import paginate
 from auth.dependencies import get_current_user
-from pydantic import BaseModel
 
 
 router = APIRouter(prefix="/packages", tags=["Packages"])
-
-
-class PackageRequest(BaseModel):
-    name: str
 
 
 @router.get("/")
@@ -32,11 +26,10 @@ def get_packages(
         raise HTTPException(status_code=500, detail=f"Erreur : {str(e)}")
 
 
-@router.post("/install/")
-def install_package(request: PackageRequest, current_user: str = Depends(get_current_user)):
-    """Installe un paquet APT en exécutant download-package-dep.sh."""
-    try:
-        result = download_package(request.name)
-        return result
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erreur : {str(e)}")
+# POST /install/ a été supprimé : doublon hérité de POST /artifacts/{name}/install
+# (routers/artifacts.py), qui atteint le même sink SSH de services/download.py
+# mais exige get_uploader_user, refuse en 409 quand des dépendances manquent et
+# écrit une entrée d'audit. Ce doublon n'avait aucun des trois et n'était gardé
+# que par get_current_user : le rôle reader, distribué aux machines clientes APT,
+# pouvait donc déclencher une exécution SSH sur la machine gérée et faire entrer
+# un paquet amont et sa fermeture de dépendances dans le pool servi, sans trace.

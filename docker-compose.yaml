@@ -80,7 +80,7 @@ services:
       ENV: production
       DATABASE_URL: postgresql://repod:${POSTGRES_PASSWORD:-repod_dev_password}@db:5432/repod
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-change-me-in-production}
-      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3003}
       REPO_FORMAT: all                            # mode APT + RPM + APK Alpine simultané
       POOL_DIR: /repos/pool
       MANIFEST_DIR: /repos/manifests

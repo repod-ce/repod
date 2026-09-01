@@ -448,6 +448,31 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
 
 allowed_origins = os.getenv("CORS_ORIGINS", "http://localhost:3003").split(",")
 
+# Le wildcard n'est pas neutralisé par allow_credentials=True, contrairement à ce
+# que la règle habituelle laisse croire : starlette/middleware/cors.py bascule sur
+# allow_explicit_origin() quand les deux options sont combinées et renvoie l'Origin
+# de l'appelant, accompagnée de Access-Control-Allow-Credentials: true. N'importe
+# quelle page web peut alors appeler l'API depuis le navigateur d'un utilisateur
+# interne et lire les réponses. Le test porte sur l'appartenance à la liste, comme
+# Starlette lui-même (allow_all_origins = "*" in allow_origins) : un wildcard noyé
+# dans une liste active le mode toutes-origines tout autant qu'un wildcard seul.
+if "*" in allowed_origins:
+    if _IS_PRODUCTION:
+        raise RuntimeError(
+            "ERREUR CRITIQUE : CORS_ORIGINS vaut « * », ce qui autorise n'importe "
+            "quelle page web à appeler l'API depuis le navigateur d'un utilisateur "
+            "interne et à en lire les réponses. Listez explicitement les origines "
+            "du frontend avant de démarrer en production.\n"
+            "  Exemple : CORS_ORIGINS=http://192.0.2.10:3003"
+        )
+    else:
+        logger.warning(
+            "[security] CORS_ORIGINS vaut « * » : l'Origin de l'appelant est "
+            "réfléchie avec Access-Control-Allow-Credentials, toute page web peut "
+            "lire les réponses de l'API. Listez explicitement les origines avant "
+            "de passer en production."
+        )
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,

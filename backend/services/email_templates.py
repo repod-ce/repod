@@ -16,7 +16,8 @@ import os
 from datetime import datetime, timezone
 from pathlib import Path
 
-from jinja2 import BaseLoader, Environment, TemplateNotFound
+from jinja2 import BaseLoader, TemplateNotFound
+from jinja2.sandbox import SandboxedEnvironment
 
 logger = logging.getLogger("email_templates")
 
@@ -231,7 +232,7 @@ def _ensure_defaults():
             meta_path.write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
-def _get_env() -> Environment:
+def _get_env() -> SandboxedEnvironment:
     _ensure_defaults()
 
     class _FileLoader(BaseLoader):
@@ -242,7 +243,14 @@ def _get_env() -> Environment:
             source = path.read_text(encoding="utf-8")
             return source, str(path), lambda: path.stat().st_mtime == os.path.getmtime(path)
 
-    return Environment(loader=_FileLoader(), autoescape=True)
+    # SandboxedEnvironment (et non Environment) : le corps des templates est
+    # écrit par un admin via PUT /templates/{name} puis relu ici. Un
+    # Environment standard laisserait `{{ ''.__class__.__mro__ }}` ou
+    # `{{ cycler.__init__.__globals__.os.popen(...) }}` s'évaluer, soit une
+    # exécution de code arbitraire dans le conteneur backend (qui détient la
+    # clé GPG de signature du dépôt). autoescape ne protège pas de ça : il
+    # échappe la sortie, pas l'accès aux attributs.
+    return SandboxedEnvironment(loader=_FileLoader(), autoescape=True)
 
 
 def _common_context(context: dict) -> dict:
@@ -307,7 +315,7 @@ def render_email_template(template_name: str, context: dict) -> tuple[str, str]:
     # autoescape=False is correct here: this renders a plain-text email Subject
     # header, not HTML — HTML-escaping would corrupt legitimate characters
     # (&, <, >, quotes) in the rendered subject.
-    subject_env = Environment(autoescape=False)  # nosec B701
+    subject_env = SandboxedEnvironment(autoescape=False)  # nosec B701
     subject = subject_env.from_string(subject_tpl).render(**ctx)
     # Strip CR/LF to prevent email header injection via a crafted context value.
     subject = subject.replace("\r", " ").replace("\n", " ")
@@ -427,7 +435,10 @@ def preview_template(name: str, body: str | None = None) -> str:
     }
 
     if body:
-        env = Environment(autoescape=True)
+        # Sandbox obligatoire : `body` est le corps brut envoyé dans la requête
+        # et rendu immédiatement, dont le résultat est retourné au client
+        # sans sandbox c'est un oracle d'exécution de code en une seule requête.
+        env = SandboxedEnvironment(autoescape=True)
         tpl = env.from_string(body)
         content = tpl.render(**_common_context(sample))
         try:

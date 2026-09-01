@@ -415,12 +415,15 @@ export default function GroupsPage() {
                   {/* Actions */}
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
-                      <button onClick={() => setMembersGroup(group)}
-                        className="text-xs text-blue-600 hover:text-blue-700 font-medium transition-colors">
-                        {isAdmin ? "Membres" : "Voir"}
-                      </button>
+                      {/* Réservé à l'admin : la modale liste les membres avec
+                          leur nom et leur e-mail, et GET /groups/{id}/members
+                          exige désormais ce rôle côté backend. */}
                       {isAdmin && (
                         <>
+                          <button onClick={() => setMembersGroup(group)}
+                            className="text-xs text-blue-600 hover:text-blue-700 font-medium transition-colors">
+                            Membres
+                          </button>
                           <span className="text-gray-200">·</span>
                           <button onClick={() => setEditingGroup(group)}
                             className="text-xs text-gray-500 hover:text-gray-700 transition-colors">

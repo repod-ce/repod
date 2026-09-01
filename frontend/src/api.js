@@ -111,9 +111,6 @@ export const syncIndex = () =>
 export const reenrichCve = () =>
   api.post("/artifacts/admin/reenrich-cve").then((r) => r.data);
 
-export const installPackage = (name) =>
-  api.post("/packages/install/", { name }).then((r) => r.data);
-
 export const uploadPackage = (file, distribution = "jammy") => {
   const formData = new FormData();
   formData.append("file", file);

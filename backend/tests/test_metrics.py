@@ -9,7 +9,11 @@ Architecture :
   middleware/metrics_middleware.py → MetricsMiddleware (BaseHTTPMiddleware)
   routers/metrics_router.py     → GET /metrics (sans préfixe API, endpoint infra)
 
-Dépendances : prometheus-client (pas jose — pas d'authentification sur /metrics)
+Le contrat d'authentification de GET /metrics et l'anonymisation des labels sont
+couverts par tests/test_metrics_public_exposure.py, qui les teste sur le
+comportement réel plutôt que par inspection de source.
+
+Dépendances : prometheus-client
 """
 
 # ── Env avant tout import ─────────────────────────────────────────────────────
@@ -21,9 +25,7 @@ os.environ["MANIFEST_DIR"] = _TMP
 os.environ.setdefault("POOL_DIR", _TMP)
 
 # ── Imports normaux ────────────────────────────────────────────────────────────
-import asyncio
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -186,66 +188,79 @@ class TestMetricsMiddlewareExists:
 
 
 class TestMetricsMiddlewareBehavior:
-    """Vérifie que le middleware incrémente les compteurs."""
+    """
+    Vérifie que le middleware alimente réellement les compteurs.
 
-    @pytest.mark.asyncio
-    async def test_middleware_increments_request_counter(self):
-        """
-        Après une requête, http_requests_total doit être incrémenté.
-        Test avec une ASGI app minimale (sans importer la full app FastAPI).
-        """
+    Ces tests portaient un marqueur @pytest.mark.asyncio alors que
+    pytest-asyncio n'est pas une dépendance du projet : ils étaient donc
+    ignorés, puis en échec à partir de pytest 8.4. Leur corps était pourtant
+    entièrement synchrone, TestClient l'étant. Ils n'assertaient que
+    la présence du *nom* de la métrique dans generate_latest(), vraie dès la
+    déclaration du collecteur, sans qu'aucune requête n'ait eu lieu : ils
+    auraient validé un middleware totalement inerte.
+
+    Ils comparent désormais des deltas sur l'échantillon exact. Le registre
+    (services/metrics.py) est cumulatif sur toute la session pytest, une valeur
+    absolue serait donc dépendante de l'ordre d'exécution.
+    """
+
+    @staticmethod
+    def _app(chemin: str):
         from starlette.applications import Starlette
         from starlette.requests import Request
         from starlette.responses import PlainTextResponse
         from starlette.routing import Route
-        from starlette.testclient import TestClient
+
         from middleware.metrics_middleware import MetricsMiddleware
-        from services.metrics import http_requests_total, REGISTRY
-        from prometheus_client import generate_latest
 
         async def homepage(request: Request):
             return PlainTextResponse("ok")
 
-        app = Starlette(routes=[Route("/ping", homepage)])
+        app = Starlette(routes=[Route(chemin, homepage)])
         app.add_middleware(MetricsMiddleware)
+        return app
 
-        # Snapshot avant
-        before = generate_latest(REGISTRY).decode()
-
-        client = TestClient(app)
-        client.get("/ping")
-
-        # Snapshot après
-        after = generate_latest(REGISTRY).decode()
-
-        # Le counter doit apparaître dans la sortie
-        assert "repod_http_requests_total" in after
-
-    @pytest.mark.asyncio
-    async def test_middleware_records_duration(self):
-        """
-        Après une requête, http_request_duration_seconds doit apparaître.
-        """
-        from starlette.applications import Starlette
-        from starlette.requests import Request
-        from starlette.responses import PlainTextResponse
-        from starlette.routing import Route
-        from starlette.testclient import TestClient
-        from middleware.metrics_middleware import MetricsMiddleware
+    @staticmethod
+    def _valeur(nom: str, labels: dict) -> float:
         from services.metrics import REGISTRY
-        from prometheus_client import generate_latest
 
-        async def homepage(request: Request):
-            return PlainTextResponse("ok")
+        return REGISTRY.get_sample_value(nom, labels) or 0.0
 
-        app = Starlette(routes=[Route("/probe", homepage)])
-        app.add_middleware(MetricsMiddleware)
+    # Une app Starlette nue ne renseigne jamais scope["route"] : seul
+    # fastapi.routing.APIRoute.matches() le pose. Le middleware se replie donc
+    # ici sur sa constante, et non sur « /ping ». La normalisation en gabarit de
+    # route est couverte sur une app FastAPI dans
+    # tests/test_metrics_public_exposure.py.
+    _PATH_ATTENDU = "__unmatched__"
 
-        client = TestClient(app)
-        client.get("/probe")
+    def test_middleware_increments_request_counter(self):
+        """Après une requête, repod_http_requests_total gagne exactement 1."""
+        from starlette.testclient import TestClient
 
-        output = generate_latest(REGISTRY).decode()
-        assert "repod_http_request_duration_seconds" in output
+        labels = {"method": "GET", "path": self._PATH_ATTENDU, "status_code": "200"}
+        avant = self._valeur("repod_http_requests_total", labels)
+
+        TestClient(self._app("/ping")).get("/ping")
+
+        apres = self._valeur("repod_http_requests_total", labels)
+        assert apres == avant + 1, (
+            f"le compteur devait passer de {avant} à {avant + 1}, obtenu {apres}"
+        )
+
+    def test_middleware_records_duration(self):
+        """Après une requête, l'histogramme de durée enregistre une observation."""
+        from starlette.testclient import TestClient
+
+        labels = {"method": "GET", "path": self._PATH_ATTENDU}
+        avant = self._valeur("repod_http_request_duration_seconds_count", labels)
+
+        TestClient(self._app("/probe")).get("/probe")
+
+        apres = self._valeur("repod_http_request_duration_seconds_count", labels)
+        assert apres == avant + 1, (
+            f"l'histogramme devait enregistrer une observation, "
+            f"compteur passé de {avant} à {apres}"
+        )
 
     def test_middleware_source_imports_metrics(self):
         """Le middleware doit importer les métriques depuis services.metrics."""
@@ -289,15 +304,23 @@ class TestMetricsRouterExists:
         src = self._src()
         assert "CONTENT_TYPE_LATEST" in src or "text/plain" in src
 
-    def test_no_auth_on_metrics(self):
+    def test_pas_de_garde_utilisateur_generique(self):
         """
-        /metrics ne doit PAS exiger d'authentification
-        (Prometheus scrape interne, isolation réseau).
+        /metrics ne doit pas être gardé par get_current_user.
+
+        Un scraper Prometheus ne présente pas de session utilisateur : sa
+        créance est dédiée (METRICS_TOKEN), avec un JWT de rôle d'audit comme
+        alternative. Gater l'endpoint sur « tout utilisateur authentifié »
+        casserait le scrape sans rien protéger de plus.
+
+        Le contrat d'authentification complet, y compris le repli anonyme quand
+        METRICS_TOKEN n'est pas défini, est testé sur le comportement réel dans
+        tests/test_metrics_public_exposure.py.
         """
         src = self._src()
         assert "get_current_user" not in src, (
-            "/metrics doit être accessible sans authentification "
-            "(scrape Prometheus interne)"
+            "/metrics ne doit pas dépendre de get_current_user : la créance de "
+            "scrape est METRICS_TOKEN, ou à défaut un JWT de rôle d'audit"
         )
 
 

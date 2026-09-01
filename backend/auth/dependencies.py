@@ -34,6 +34,15 @@ def _parse_token(token: str) -> dict:
     user = get_user(data["username"])
     if not user:
         raise _401
+    # Le claim « role » du JWT est un instantané figé à l'émission du token :
+    # après une rétrogradation il reste périmé jusqu'à expiration, et
+    # /auth/refresh le recopiait tel quel dans un token neuf, reconduisant
+    # indéfiniment des droits révoqués. La table users est la seule source de
+    # vérité pour l'autorisation ; on écrase donc le claim par le rôle courant
+    # avant toute décision d'accès. Seule cette clé est remplacée : « username »,
+    # « full_name » et surtout « jti » (absent de la ligne users, indispensable
+    # à /auth/logout) restent ceux du token.
+    data["role"] = user.get("role", "reader")
     return data
 
 
@@ -51,7 +60,10 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> str:
 
 
 async def get_current_user_full(token: str = Depends(oauth2_scheme)) -> dict:
-    """Tout utilisateur authentifié — retourne {username, role, full_name}."""
+    """Tout utilisateur authentifié — retourne {username, role, full_name, jti}.
+
+    `role` est relu dans la table users à chaque requête, il ne provient pas du
+    claim du token."""
     return _parse_token(token)
 
 

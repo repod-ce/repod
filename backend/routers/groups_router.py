@@ -6,7 +6,7 @@ Routes de gestion des groupes d'utilisateurs.
   GET    /groups/{id}               → détail d'un groupe
   PUT    /groups/{id}               → mettre à jour (admin)
   DELETE /groups/{id}               → supprimer (admin)
-  GET    /groups/{id}/members       → liste des membres
+  GET    /groups/{id}/members       → liste des membres (admin)
   POST   /groups/{id}/members       → ajouter un membre (admin)
   DELETE /groups/{id}/members/{u}   → retirer un membre (admin)
 """
@@ -118,8 +118,13 @@ def delete_one_group(group_id: str, current_user: str = Depends(get_admin_user))
     delete_group(group_id)
 
 
+# Admin, comme l'écriture juste en dessous : get_group_members() renvoie
+# full_name, email et role de chaque membre, soit l'annuaire du personnel.
+# get_current_user l'ouvrait à tout compte authentifié, dont le rôle reader que
+# auth/users.py documente comme compte de service distribué aux machines
+# clientes APT. L'annuaire canonique GET /auth/users est admin lui aussi.
 @router.get("/{group_id}/members")
-def list_members(group_id: str, current_user: str = Depends(get_current_user)):
+def list_members(group_id: str, current_user: str = Depends(get_admin_user)):
     if not get_group(group_id):
         raise HTTPException(status_code=404, detail="Groupe introuvable")
     return {"members": get_group_members(group_id)}
